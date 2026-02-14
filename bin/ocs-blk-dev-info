@@ -35,7 +35,7 @@ if [ -z "$lsblk_output" ] || [ "$(echo "$lsblk_output" | jq '.blockdevices | len
     exit 0
 fi
 
-# Process the entire JSON output with a more efficient pipeline.
+# Process the entire JSON output
 echo "$lsblk_output" | jq -c '.blockdevices[]' | while IFS= read -r device_json; do
     # Extract name to query udevadm
     name=$(echo "$device_json" | jq -r '.name')
@@ -47,19 +47,18 @@ echo "$lsblk_output" | jq -c '.blockdevices[]' | while IFS= read -r device_json;
     # If ID_PATH_TAG is empty, set it to "N/A"
     id_path_tag=${id_path_tag:-N/A}
 
-    # Use a single jq command to:
-    # 1. Add the new 'id_path_tag' field.
-    # 2. Use '(.field // "")' to handle potential null values before piping to gsub.
-    # 3. Model and label might contain quotes ("). Remove it so that it won't break dialog menu.
-    echo "$device_json" | jq \
-        --arg id_path_tag "$id_path_tag" \
-        '. + {id_path_tag: $id_path_tag} |
-         .type = (.type // "" | gsub(" "; "_")) |
-         .size = (.size // "" | gsub(" "; "_")) |
-         .model = (.model // "" | gsub("\""; "") | gsub(" "; "_")) |
-         .fstype = (.fstype // "" | gsub(" "; "_")) |
-         .serial = (.serial // "" | gsub(" "; "_")) |
-         .label = (.label // "" | gsub("\""; "") | gsub(" "; "_")) |
-         .parttype = (.parttype // "" | gsub("\""; "") | gsub(" "; "_")) |
-         .id_path_tag = (.id_path_tag // "" | gsub(" "; "_"))'
+    # Safely inject the ID path tag, handle nulls, and replace spaces and quotes with underscores.
+    echo "$device_json" | jq --arg id_path_tag "$id_path_tag" '
+        . + {id_path_tag: $id_path_tag} |
+        with_entries(
+            if .value == null then
+                .value = ""
+            elif .value | type == "string" then
+                # Replaces double quotes, single quotes, and spaces with an underscore
+                .value |= gsub("[\"'\'' ]"; "_")
+            else
+                .
+            end
+        )
+    '
 done | jq -s . > "$ocs_out_f"
