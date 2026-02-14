@@ -1,7 +1,7 @@
 #!/bin/bash
 # License: GPL 
 # Author: Steven Shiau <steven _at_ clonezilla org>
-# Description: Program to restore an image by receiving multicast packets from server
+# Description: Program to restore an image by receiving multicast/BT packets from server
 # What will be done in this program:
 # 1. Get a tarball about the image which contains all files in the image except file system image files.
 # 3. Get a script about the full command to start restoring.
