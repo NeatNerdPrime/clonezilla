@@ -3,6 +3,18 @@ Authors: Steven Shiau <steven _at_ clonezilla org>, Blake, Kuo-Lien Huang (klhau
 License: GPL
 https://clonezilla.org
 
+clonezilla (5.15.1-drbl1) unstable; urgency=medium
+
+  * Bug fixed: function udp_send_part_img_or_dev
+    (multicast sending from raw device) from ocs-functions
+    did not work for a partition with unknown file system.
+  * Added the mechanism for cloning 4kn to 512n/e disk.
+  * ocs-blk-dev-info: replace space and single/doulbe quote with "-".
+    Rewrite it to make it more efficient. Thanks to pete-15.
+    Ref: https://sourceforge.net/p/clonezilla/discussion/Clonezilla_live/thread/e0fb8053/?limit=25#b9f3
+
+ -- Steven Shiau <steven@clonezilla.org>  Mon, 16 Feb 2026 16:29:23 +0800
+
 clonezilla (5.14.5-drbl1) unstable; urgency=medium
 
   * ocs-pt-size-from-sf: new small program to get partition size
