@@ -6534,7 +6534,7 @@ udp_send_part_img_or_dev() {
   # imagedir, port and ipart are global variable
   local target_d img_file part
   local n split_by
-  local from_rawdev ptfs
+  local from_rawdev ptfs cmd_partclone
   while [ $# -gt 0 ]; do
     case "$1" in
       -f|--from-raw-dev)
@@ -6566,23 +6566,29 @@ udp_send_part_img_or_dev() {
   
     # get the filesystem
     ptfs="$(ocs-get-dev-info /dev/$part filesystem 2>/dev/null)"
+    get_partclone_direct_io_opt read /dev/$part # Obtain ptcl_read_dio_opt
     if [ -z "$ptfs" ]; then
       [ "$BOOTUP" = "color" ] && $SETCOLOR_WARNING
-      echo "Unable to identify the file system on /dev/$part. Will use dd mode." | tee --append $OCS_LOGFILE
+      echo "Unable to identify the file system on /dev/$part. Will use Partclone dd mode." | tee --append $OCS_LOGFILE
       [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
-      # Set the file system as "dd".
-      ptfs="dd"
+      # Some parameters for partclone.dd are not required. Here "-c" is not provided by partclone.dd when saving.
+      cmd_partclone="partclone.dd $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -L $PARTCLONE_LOG -s /dev/$part -o - 2>/dev/null" 
     elif ! `is_partclone_support_fs $ptfs`; then
       [ "$BOOTUP" = "color" ] && $SETCOLOR_WARNING
       echo "The file system \"$ptfs\" on /dev/$part is not supported by Partclone. Use Partclone dd mode for raw device deployment." | tee --append $OCS_LOGFILE
       [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
-      # Set the file system as "dd".
-      ptfs="dd"
+      # Some parameters for partclone.dd are not required. Here "-c" is not provided by partclone.dd when saving.
+      cmd_partclone="partclone.dd $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -L $PARTCLONE_LOG -s /dev/$part -o - 2>/dev/null" 
+    else
+      cmd_partclone="partclone.${ptfs} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -L $PARTCLONE_LOG -c -s /dev/$part -o - 2>/dev/null" 
     fi
-    get_partclone_direct_io_opt read /dev/$part # Obtain ptcl_read_dio_opt
-    LC_ALL=C partclone.${ptfs} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -L $PARTCLONE_LOG  -c -s /dev/$part -o - 2>/dev/null \
-    | $mcast_rawdev_zip_std \
-    | $udpcast_send_cmd 2>$udpcast_stderr
+    sending_comd="$cmd_partclone | $mcast_rawdev_zip_std | $udpcast_send_cmd 2>$udpcast_stderr"
+    if [ "$verbose" = "on" ]; then
+      echo "Running: $sending_comd" | tee --append ${OCS_LOGFILE}
+    fi
+    LC_ALL=C eval "(${sending_comd} && exit \${PIPESTATUS[0]})"
+    ret=$?
+    cat "${PARTCLONE_LOG}" >> ${OCS_LOGFILE}
   else
     # From image
     if [ -f "$imagedir/$target_d/$img_file.000" -o \
