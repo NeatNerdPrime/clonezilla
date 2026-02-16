@@ -106,7 +106,7 @@ confirm_do_it_in_target_dev() {
     [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
     echo $msg_delimiter_star_line | tee --append ${OCS_LOGFILE}
 
-    if [ "$batch_mode" != "on" ]; then
+    if [ "$ocs_batch_mode" != "on" ]; then
       confirm_continue_no_default_answer "clean_tmp_dirs"
       echo $msg_delimiter_star_line
       # 2nd confirmation
@@ -875,7 +875,7 @@ parse_ocs_onthefly_cmd_options() {
 # Parse command-line options
   while [ $# -gt 0 ]; do
     case "$1" in
-      -b|-batch|--batch|--batch-mode) shift; batch_mode="on" ;;
+      -b|-batch|--batch|--batch-mode) shift; ocs_batch_mode="on" ;;
       -e1|--change-geometry)  
               change_ntfs_boot_chs="on"
               shift
@@ -1281,7 +1281,7 @@ PARTIMAGE_SAVE_OPT=
 STATUS=
 ocs_onthefly_mode=""
 # Some default setting.
-batch_mode="off"
+ocs_batch_mode="off"
 install_grub="off"
 grub_partition="auto" 
 change_ntfs_boot_chs="off"
@@ -1374,7 +1374,7 @@ if [ "$ocs_onthefly_mode" = "interactive" ]; then
   [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
   [ -e "$run_again_fname" ] && chmod 755 $run_again_fname
   echo $msg_delimiter_star_line | tee --append ${OCS_LOGFILE}
-  if [ "$batch_mode" != "on" ]; then
+  if [ "$ocs_batch_mode" != "on" ]; then
     echo -n "$msg_press_enter_to_continue "
     read
   fi
@@ -1400,7 +1400,7 @@ if [ -n "$STATUS" ]; then
     echo "Source machine: $SOURCE_IP"
     echo "Destination device on this machine: $tgt_dev"
     [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
-    if [ "$batch_mode" = "off" ]; then
+    if [ "$ocs_batch_mode" = "off" ]; then
       echo -n "$msg_press_enter_to_continue..."
       read
     fi
