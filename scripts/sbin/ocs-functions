@@ -3469,6 +3469,7 @@ create_gpt_partition_table() {
   local opt_wm sfdisk_cmd_gpt
   local pt_file sect_size_from_img sect_size_from_disk pt_tab
   do_ntfs_512to4k_fix_flag=""  # do_ntfs_512to4k_fix_flag is a global variable
+  do_ntfs_4kto512_fix_flag=""  # do_ntfs_4kto512_fix_flag is a global variable
   echo $msg_delimiter_star_line
 
   # Get sector size "sector-size:"
@@ -3490,6 +3491,11 @@ create_gpt_partition_table() {
     ocs-pt-512-4k-convert 512to4k $pt_file $pt_tab
     pt_file=$pt_tab
     do_ntfs_512to4k_fix_flag="yes"
+  elif [ "$sect_size_from_img" -eq 4096 -a "$sect_size_from_disk" -eq 512 ]; then
+    pt_tab="$(mktemp /tmp/pt_tab.XXXXXX)"
+    ocs-pt-512-4k-convert 4kto512 $pt_file $pt_tab
+    pt_file=$pt_tab
+    do_ntfs_4kto512_fix_flag="yes"
   fi
   # Before really create partition table, we should do some tasks...
   clean_mbr_partition_table_before_gen_gpt_table $tgt_hd_file
@@ -6240,13 +6246,13 @@ do_unicast_stdin_restore() {
   elif is_partclone_image "$target_d" $img_file; then
     # The saved image is from partclone
     clean_filesystem_header_in_dev $part
-    if [ "$esp_part" = "yes" -a "$do_ntfs_512to4k_fix_flag" = "yes" ]; then
-      # When NTFS fix is required for sector 512B to 4kn disk,
+    if [ "$esp_part" = "yes" ] && [ "$do_ntfs_512to4k_fix_flag" = "yes" -o "$do_ntfs_4kto512_fix_flag" = "yes" ]; then
+      # When NTFS fix is required for sector 512B to 4kn disk or vice versa.
       # We only support the image saved by Partclone can be restored to an image file
       # and its content will be copied by mounting it.
       # Now restore the image to a tmp file, mount it and copy the files to destination partition
       [ "$BOOTUP" = "color" ] && $SETCOLOR_WARNING
-      echo "In the case for 512B to 4kn disk. Using an alternative solution to clone ESP device."
+      echo "In the case for 512B to 4kn disk or vice versa. Using an alternative solution to clone ESP device."
       [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
       part_orig="$part" # Keep the original block device name
       part="$(mktemp -u /tmp/esp_part_img.XXXXXX)" # New destination file, not block device
@@ -8820,11 +8826,40 @@ clear_ntfs_volume_dirty_flag() {
   done
 } # end of clear_ntfs_volume_dirty_flag
 #
+do_ntfs_4kto512_fix() {
+  # For every NTFS partition:
+  # 1. Fix PS (Bytes Per Sector, Offset 11, 12) as 512 (0x0200). Its hex Little-endian is \x00\x02
+  # 2. Fix Sectors Per Cluster (SPC) as 8
+  # Then ntfsfix it.
+  local tgt_parts_="$*" # e.g., sda, sda1...
+  local ipartition p_fs
+  if [ -z "$tgt_parts_" ]; then
+    [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
+    echo "No \$tgt_parts_ was assigned in function do_ntfs_4kto512_fix!"
+    [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+    return 1
+  fi
+  for ipartition in $tgt_parts_; do
+    is_whole_disk $ipartition && continue
+    p_fs="$(LC_ALL=C ocs-get-dev-info /dev/$ipartition filesystem 2>/dev/null)"
+    if [ "$p_fs" = "ntfs" ]; then
+      echo "Now fix Bytes Per Sector (Offset 11, 12) as 512 (0x0200) for /dev/$ipartition..." | tee --append $OCS_LOGFILE
+      printf '\x00\x02' | dd of=/dev/$ipartition bs=1 seek=11 count=2 conv=notrunc | tee --append $OCS_LOGFILE
+      echo "Now fix Sectors Per Cluster as 8 for /dev/$ipartition..." | tee --append $OCS_LOGFILE
+      printf '\x08' | dd of=/dev/$ipartition bs=1 seek=13 count=1 conv=notrunc | tee --append $OCS_LOGFILE
+      clear_ntfs_volume_dirty_flag $ipartition
+      echo "Running: ntfsfix /dev/$ipartition" | tee --append $OCS_LOGFILE
+      ntfsfix /dev/$ipartition | tee --append $OCS_LOGFILE
+      echo $msg_delimiter_star_line | tee --append $OCS_LOGFILE
+    fi
+  done
+} # end of do_ntfs_4kto512_fix
+#
 do_ntfs_512to4k_fix() {
-  # For every NTFS partition, fix BPS (Bytes Per Sector, Offset 11, 12) as 4096 (0x0010)
-  # printf '\x00\x10' | dd of=/dev/$ntfs_p bs=1 seek=11 count=2 conv=notrunc
-  # printf '\x01' | dd of=/dev/$ntfs_p bs=1 seek=13 count=1 conv=notrunc
-  # The ntfsfix it
+  # For every NTFS partition, fix BPS (Bytes Per Sector, Offset 11, 12) as 4096 (0x1000)
+  # 1. Fix PS (Bytes Per Sector, Offset 11, 12) as 4096 (0x1000). Its hex Little-endian is \x00\x10
+  # 2. Fix Sectors Per Cluster (SPC) as 1
+  # Then ntfsfix it.
   local tgt_parts_="$*" # e.g., sda, sda1...
   local ipartition p_fs
   if [ -z "$tgt_parts_" ]; then
@@ -8839,6 +8874,7 @@ do_ntfs_512to4k_fix() {
     if [ "$p_fs" = "ntfs" ]; then
       echo "Now fix Bytes Per Sector (Offset 11, 12) as 4096 (0x0010) for /dev/$ipartition..." | tee --append $OCS_LOGFILE
       printf '\x00\x10' | dd of=/dev/$ipartition bs=1 seek=11 count=2 conv=notrunc | tee --append $OCS_LOGFILE
+      echo "Now fix Sectors Per Cluster as 1 for /dev/$ipartition..." | tee --append $OCS_LOGFILE
       printf '\x01' | dd of=/dev/$ipartition bs=1 seek=13 count=1 conv=notrunc | tee --append $OCS_LOGFILE
       clear_ntfs_volume_dirty_flag $ipartition
       echo "Running: ntfsfix /dev/$ipartition" | tee --append $OCS_LOGFILE
@@ -8847,7 +8883,7 @@ do_ntfs_512to4k_fix() {
     fi
   done
 } # end of do_ntfs_512to4k_fix
-
+#
 # task "savedisk"
 # parameter:
 #  $1 target_dir
@@ -10348,11 +10384,16 @@ task_restoreparts() {
     done
   fi
 
-  # Do 512B to 4kn fix for NTFS. This should be after NTFS file system is resized.
+  # Do 512B to 4kn or 4kn to 512B fix for NTFS. This should be after NTFS file system is resized.
   # Otherwise you have to enter MS Windows rescue mode, in the command prompt run:
   # chkdsk c: /f
   if [ "$do_ntfs_512to4k_fix_flag" = "yes" ]; then
     do_ntfs_512to4k_fix $target_parts
+    show_bcdboot_cmd_after_4k_512B_ntfsfix
+    echo $msg_delimiter_star_line | tee --append ${OCS_LOGFILE}
+  elif [ "$do_ntfs_4kto512_fix_flag" = "yes" ]; then
+    do_ntfs_4kto512_fix $target_parts
+    show_bcdboot_cmd_after_4k_512B_ntfsfix
     echo $msg_delimiter_star_line | tee --append ${OCS_LOGFILE}
   fi
 
@@ -15392,13 +15433,13 @@ local_partition_to_partiton_clone() {
     ntfsclone $ntfsclone_progress_option --restore-image --overwrite $tgt_p -
     ret=$?
   elif [ "$USE_PARTCLONE_IN_OCS_ONTHEFLY" = "yes" ] && `is_partclone_support_fs $pt_fs`; then
-    if [ "$esp_part" = "yes" -a "$do_ntfs_512to4k_fix_flag" = "yes" ]; then
-      # When NTFS fix is required for sector 512B to 4kn disk,
+    if [ "$esp_part" = "yes" ] && [ "$do_ntfs_512to4k_fix_flag" = "yes" -o "$do_ntfs_4kto512_fix_flag" = "yes" ]; then
+      # When NTFS fix is required for sector 512B to 4kn disk or vice versa.
       # We only support the image saved by Partclone can be restored to an image file
       # and its content will be copied by mounting it.
       # Now restore the image to a tmp file, mount it and copy the files to destination partition
       [ "$BOOTUP" = "color" ] && $SETCOLOR_WARNING
-      echo "In the case for 512B to 4kn disk. Using an alternative solution to clone ESP device."
+      echo "In the case for 512B to 4kn disk or vice versa. Using an alternative solution to clone ESP device."
       [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
       esp_mnt="$(mktemp -d /tmp/esp_mnt.XXXXXX)"
       mkdir $esp_mnt/src $esp_mnt/dest
@@ -17154,3 +17195,14 @@ check_bitlocker_dev_then_ask_if_open_it() {
   echo "File: $OCS_PARAM_TMP"
   cat $OCS_PARAM_TMP
 } # end of check_bitlocker_dev_then_ask_if_open_it
+#
+show_bcdboot_cmd_after_4k_512B_ntfsfix(){
+  [ "$BOOTUP" = "color" ] && $SETCOLOR_WARNING
+  echo "$msg_run_cmd_from_MS_rescue_mode:"
+  echo "bcdboot c:\windows /s {EFI partition drive letter}"
+  [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+  # Since this fix is not for massive deployment, we always wait here.
+  # Otherwise when ocs-onthefly is run, we actually call ocs-sr with "--batch".
+  echo -n "$msg_press_enter_to_continue..."
+  read
+} # end of show_bcdboot_cmd_after_4k_512B_ntfsfix
