@@ -1,3 +1,10 @@
+clonezilla (5.15.3-drbl1) unstable; urgency=medium
+
+  * Improved functions do_ntfs_512to4k_fix and do_ntfs_4kto512_fix
+    by updating Total Sectors (Offset 40) for NTFS.
+
+ -- Steven Shiau <steven@clonezilla.org>  Tue, 17 Feb 2026 15:20:22 +0800
+
 clonezilla (5.15.2-drbl1) unstable; urgency=medium
 
   * Stop using efi_uga since Debian grub 2.14.2 has dropped it.
