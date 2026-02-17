@@ -9122,9 +9122,14 @@ save_part_table_mbr_dm_info(){
 
     echo "Saving block devices attributes in $target_dir_fullpath/blkid.list..." | tee --append $OCS_LOGFILE
     output_blkid_info "$target_dir_fullpath/blkid.list"
+
+    echo "Saving block devices info in json format as $target_dir_fullpath/blkdev.json..." | tee --append $OCS_LOGFILE
+    LC_ALL=C lsblk -JOb > $target_dir_fullpath/blkdev.json
   fi
 
   # Save partition table
+  echo "Saving block devices output by fdisk as $target_dir_fullpath/fdisk.list..." | tee --append $OCS_LOGFILE
+  LC_ALL=C fdisk -x --bytes > $target_dir_fullpath/fdisk.list
   for ihd in $target_hd; do
     check_integrity_of_partition_table_in_disk /dev/$ihd
     if ! is_whole_disk /dev/$ihd; then
