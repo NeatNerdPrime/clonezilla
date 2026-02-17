@@ -8834,25 +8834,44 @@ clear_ntfs_volume_dirty_flag() {
 #
 do_ntfs_4kto512_fix() {
   # For every NTFS partition:
-  # 1. Fix PS (Bytes Per Sector, Offset 11, 12) as 512 (0x0200). Its hex Little-endian is \x00\x02
-  # 2. Fix Sectors Per Cluster (SPC) as 8
-  # Then ntfsfix it.
-  local tgt_parts_="$*" # e.g., sda, sda1...
-  local ipartition p_fs
+  # 1. Set Bytes Per Sector (Offset 11) to 512 (0x0200).
+  # 2. Set Sectors Per Cluster (Offset 13) to 8 (result: 4096-byte clusters).
+  # 3. Update Total Sectors (Offset 40) using the real 512B sector count.
+  # Finally, run ntfsfix to flag the volume for a Windows consistency check.
+  local tgt_parts_="$*" 
+  local ipartition p_fs total_s_dec val byte i le_hex
+  
   if [ -z "$tgt_parts_" ]; then
     [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
     echo "No \$tgt_parts_ was assigned in function do_ntfs_4kto512_fix!"
     [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
     return 1
   fi
+  
   for ipartition in $tgt_parts_; do
     is_whole_disk $ipartition && continue
     p_fs="$(LC_ALL=C ocs-get-dev-info /dev/$ipartition filesystem 2>/dev/null)"
+    
     if [ "$p_fs" = "ntfs" ]; then
       echo "Now fix Bytes Per Sector (Offset 11, 12) as 512 (0x0200) for /dev/$ipartition..." | tee --append $OCS_LOGFILE
-      printf '\x00\x02' | dd of=/dev/$ipartition bs=1 seek=11 count=2 conv=notrunc | tee --append $OCS_LOGFILE
-      echo "Now fix Sectors Per Cluster as 8 for /dev/$ipartition..." | tee --append $OCS_LOGFILE
-      printf '\x08' | dd of=/dev/$ipartition bs=1 seek=13 count=1 conv=notrunc | tee --append $OCS_LOGFILE
+      # Step 1: Set Bytes Per Sector to 512 (Little-endian: 00 02)
+      printf '\x00\x02' | dd of=/dev/$ipartition bs=1 seek=11 count=2 conv=notrunc status=none
+      # Step 2: Set Sectors Per Cluster to 8 (8 * 512 = 4096)
+      printf '\x08' | dd of=/dev/$ipartition bs=1 seek=13 count=1 conv=notrunc status=none
+      # Step 3: Update Total Sectors (Offset 40, 8-byte field, Little-endian)
+      # blockdev --getsz always returns the count in 512-byte units
+      total_s_dec=$(blockdev --getsz /dev/$ipartition)
+      # NTFS logic uses (Total Sectors - 1)
+      val=$((total_s_dec - 1))
+      echo "  Logical 512B sectors: $total_s_dec, Internal NTFS value: $val" | tee --append $OCS_LOGFILE
+      # Convert integer to 8-byte Little-endian sequence via octal escapes
+      le_hex=""
+      for i in {0..7}; do
+        byte=$(( (val >> (8*i)) & 0xFF ))
+        le_hex="${le_hex}\\$(printf '%03o' $byte)"
+      done
+      printf "$le_hex" | dd of=/dev/$ipartition bs=1 seek=40 count=8 conv=notrunc status=none
+      # Step 4: Run ntfsfix to prompt Windows to verify filesystem health
       clear_ntfs_volume_dirty_flag $ipartition
       echo "Running: ntfsfix /dev/$ipartition" | tee --append $OCS_LOGFILE
       ntfsfix /dev/$ipartition | tee --append $OCS_LOGFILE
@@ -8862,26 +8881,45 @@ do_ntfs_4kto512_fix() {
 } # end of do_ntfs_4kto512_fix
 #
 do_ntfs_512to4k_fix() {
-  # For every NTFS partition, fix BPS (Bytes Per Sector, Offset 11, 12) as 4096 (0x1000)
-  # 1. Fix PS (Bytes Per Sector, Offset 11, 12) as 4096 (0x1000). Its hex Little-endian is \x00\x10
-  # 2. Fix Sectors Per Cluster (SPC) as 1
-  # Then ntfsfix it.
-  local tgt_parts_="$*" # e.g., sda, sda1...
-  local ipartition p_fs
+  # For every NTFS partition:
+  # 1. Set Bytes Per Sector (Offset 11) to 4096 (0x1000).
+  # 2. Set Sectors Per Cluster (Offset 13) to 1 (result: 4096-byte clusters).
+  # 3. Update Total Sectors (Offset 40) by converting 512B units to 4K units.
+  # Finally, run ntfsfix to initiate a Windows repair check.
+  local tgt_parts_="$*" 
+  local ipartition p_fs total_s_512 total_s_4k val byte i le_hex
+  
   if [ -z "$tgt_parts_" ]; then
     [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
     echo "No \$tgt_parts_ was assigned in function do_ntfs_512to4k_fix!"
     [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
     return 1
   fi
+  
   for ipartition in $tgt_parts_; do
     is_whole_disk $ipartition && continue
     p_fs="$(LC_ALL=C ocs-get-dev-info /dev/$ipartition filesystem 2>/dev/null)"
+    
     if [ "$p_fs" = "ntfs" ]; then
       echo "Now fix Bytes Per Sector (Offset 11, 12) as 4096 (0x0010) for /dev/$ipartition..." | tee --append $OCS_LOGFILE
-      printf '\x00\x10' | dd of=/dev/$ipartition bs=1 seek=11 count=2 conv=notrunc | tee --append $OCS_LOGFILE
-      echo "Now fix Sectors Per Cluster as 1 for /dev/$ipartition..." | tee --append $OCS_LOGFILE
-      printf '\x01' | dd of=/dev/$ipartition bs=1 seek=13 count=1 conv=notrunc | tee --append $OCS_LOGFILE
+      # Step 1: Set Bytes Per Sector to 4096 (Little-endian: 00 10)
+      printf '\x00\x10' | dd of=/dev/$ipartition bs=1 seek=11 count=2 conv=notrunc status=none
+      # Step 2: Set Sectors Per Cluster to 1 (1 * 4096 = 4096)
+      printf '\x01' | dd of=/dev/$ipartition bs=1 seek=13 count=1 conv=notrunc status=none
+      # Step 3: Update Total Sectors (Offset 40, 8-byte field, Little-endian)
+      # blockdev --getsz returns 512B units; we must divide by 8 for 4K disks
+      total_s_512=$(blockdev --getsz /dev/$ipartition)
+      total_s_4k=$((total_s_512 / 8))
+      val=$((total_s_4k - 1))
+      echo "  512B units: $total_s_512, 4K units: $total_s_4k, NTFS value: $val" | tee --append $OCS_LOGFILE
+      # Convert integer to 8-byte Little-endian sequence
+      le_hex=""
+      for i in {0..7}; do
+        byte=$(( (val >> (8*i)) & 0xFF ))
+        le_hex="${le_hex}\\$(printf '%03o' $byte)"
+      done
+      printf "$le_hex" | dd of=/dev/$ipartition bs=1 seek=40 count=8 conv=notrunc status=none
+      # Step 4: Clear dirty bit and trigger Windows repair
       clear_ntfs_volume_dirty_flag $ipartition
       echo "Running: ntfsfix /dev/$ipartition" | tee --append $OCS_LOGFILE
       ntfsfix /dev/$ipartition | tee --append $OCS_LOGFILE
