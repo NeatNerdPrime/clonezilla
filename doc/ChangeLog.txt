@@ -3,6 +3,12 @@ Authors: Steven Shiau <steven _at_ clonezilla org>, Blake, Kuo-Lien Huang (klhau
 License: GPL
 https://clonezilla.org
 
+clonezilla (5.15.4-drbl1) unstable; urgency=medium
+
+  * Append '--rescue' to partclone options to bypass mtdblock read errors.
+
+ -- Steven Shiau <steven@clonezilla.org>  Wed, 18 Feb 2026 16:59:20 +0800
+
 clonezilla (5.15.3-drbl1) unstable; urgency=medium
 
   * Improved functions do_ntfs_512to4k_fix and do_ntfs_4kto512_fix
