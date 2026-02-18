@@ -1403,6 +1403,7 @@ save_part_by_partclone() {
   trap "[ -f "$TMP" ] && rm -f $img_out_err" HUP INT QUIT TERM EXIT
 
   get_partclone_direct_io_opt read $source_dev # Obtain ptcl_read_dio_opt
+  chk_partclone_rescue_opt $source_dev # Obtain ptcl_rescue_opt
 
   # Special case for no compression + no splitting. To get the best performance, reduce the usage of pipe to cat and split.
   # Ref: https://sourceforge.net/p/clonezilla/discussion/Open_discussion/thread/46706796eb
@@ -1411,21 +1412,21 @@ save_part_by_partclone() {
       dd)
          # Special case, dd, no compression + no splitting.
          # Some parameters for partclone.dd are not required. Here "-c" is not provided by partclone.dd when saving.
-         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -z ${partclone_dd_bs} -L $partclone_img_info_tmp -s $source_dev --output \"$tgt_dir/$(to_filename ${tgt_file}).${fs_pre}-img.${comp_suf}\""
+         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt $ptcl_rescue_opt -z ${partclone_dd_bs} -L $partclone_img_info_tmp -s $source_dev --output \"$tgt_dir/$(to_filename ${tgt_file}).${fs_pre}-img.${comp_suf}\""
          ;;
        *)
          # Special case, not dd, no compression + no splitting
-         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -L $partclone_img_info_tmp -c -s $source_dev --output \"$tgt_dir/$(to_filename ${tgt_file}).${fs_pre}-img.${comp_suf}\""
+         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt $ptcl_rescue_opt -L $partclone_img_info_tmp -c -s $source_dev --output \"$tgt_dir/$(to_filename ${tgt_file}).${fs_pre}-img.${comp_suf}\""
          ;;
     esac
   else
     case "$fs_p" in
       dd)
          # Some parameters for partclone.dd are not required. Here "-c" is not provided by partclone.dd when saving.
-         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -z ${partclone_dd_bs} -L $partclone_img_info_tmp -s $source_dev --output - | $compress_prog_opt"
+         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt $ptcl_rescue_opt -z ${partclone_dd_bs} -L $partclone_img_info_tmp -s $source_dev --output - | $compress_prog_opt"
          ;;
        *)
-         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt -L $partclone_img_info_tmp -c -s $source_dev --output - | $compress_prog_opt"
+         cmd_partclone="partclone.${fs_p} $PARTCLONE_SAVE_OPT $ptcl_read_dio_opt $ptcl_rescue_opt -L $partclone_img_info_tmp -c -s $source_dev --output - | $compress_prog_opt"
          ;;
     esac
     case "$VOL_LIMIT" in
@@ -9557,7 +9558,7 @@ task_saveparts() {
   deal_with_bitlocker_partitions "$clted_normal_devs"
 
   for partition in $clted_normal_devs; do
-    # not LVM or LUKS, normal partition
+    # Now deal with non LVM or LUKS, i.e., normal partition
     image_save /dev/$partition "$target_dir_fullpath" $partition
     rc_savepts="$(($rc_savepts + $?))"
     # Tag the partition info. This is special for NTFS boot reserved partiition
@@ -17255,3 +17256,15 @@ show_bcdboot_cmd_after_4k_512B_ntfsfix(){
   echo -n "$msg_press_enter_to_continue..."
   read
 } # end of show_bcdboot_cmd_after_4k_512B_ntfsfix
+#
+chk_partclone_rescue_opt() {
+  local i_dev_="$1" # i_dev_ is like sda1, nvme0n1p1
+  ptcl_rescue_opt="" # global variable
+  if [[ "$i_dev_" == *mtdblock* ]]; then
+    echo "Notice: MTD block device detected (/dev/$i_dev_)."
+    echo "Appending '--rescue' to partclone options to bypass raw flash ECC/read errors."
+    # Append the rescue flag.
+    # (Using --rescue forces partclone to pad bad sectors with zeros instead of failing)
+    ptcl_rescue_opt="--rescue"
+  fi
+} # end of chk_partclone_rescue_opt
