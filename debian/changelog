@@ -1,3 +1,11 @@
+clonezilla (5.18.11-drbl1) unstable; urgency=medium
+
+  * configure dhcpcd to use clientid for stable IP reservations.
+    Ref: https://github.com/stevenshiau/clonezilla/issues/191
+    Thanks FoxKyong for suggesting this.
+
+ -- Steven Shiau <steven@clonezilla.org>  Wed, 09 Sep 2026 17:20:24 +0800
+
 clonezilla (5.18.10-drbl1) unstable; urgency=medium
 
   * ocs-live-boot-menu: check shim_lock instead of secureboot in grub.cfg
