@@ -51,6 +51,9 @@ iface lo inet loopback
 
 NET_END
 
+# Configure dhcpcd for live system
+configure_dhcpcd_for_live_system
+
 #
 clean_udev_persistent_net_rules
 

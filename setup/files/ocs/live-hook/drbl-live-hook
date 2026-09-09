@@ -132,6 +132,10 @@ auto lo
 iface lo inet loopback
 
 NET_END
+
+# Configure dhcpcd for live system
+configure_dhcpcd_for_live_system
+
 # Assign a default DNS
 # //NOTE// This won't work since live helper/build will remove /etc/resolv.conf.
 # The reason we change the nameserver to public one is we just do not want the DNS server (maybe private one) to be built-in in dhcpd.conf when running drblpush.

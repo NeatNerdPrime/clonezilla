@@ -926,3 +926,19 @@ ADDPROG_END
   chmod 755 /usr/share/initramfs-tools/hooks/add_progs
   update_initramfs_flag="yes"
 } # copy_extra_prog_to_initrd
+#
+configure_dhcpcd_for_live_system() {
+  # Comment out duid and enable clientid in dhcpcd.conf to use MAC-based client identification
+  # on a non-persistent live system. This prevents the DHCP client ID (DUID) from changing
+  # on every boot and ensures stable DHCP IP address reservation.
+  local dhcpcd_conf="${SYSCONFDIR:-/etc}/dhcpcd.conf"
+  if [ -f "$dhcpcd_conf" ]; then
+    echo "Configuring dhcpcd for live system in $dhcpcd_conf..."
+    perl -pi -e 's|^[[:space:]]*duid|#duid|g' "$dhcpcd_conf"
+    if grep -q -E '^[[:space:]]*#[[:space:]]*clientid' "$dhcpcd_conf"; then
+      perl -pi -e 's|^[[:space:]]*#[[:space:]]*clientid|clientid|g' "$dhcpcd_conf"
+    elif ! grep -q -E '^[[:space:]]*clientid' "$dhcpcd_conf"; then
+      echo "clientid" >> "$dhcpcd_conf"
+    fi
+  fi
+} # end of configure_dhcpcd_for_live_system

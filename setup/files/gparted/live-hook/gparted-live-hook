@@ -27,6 +27,9 @@ clean_udev_persistent_net_rules
 # create a dummy /etc/fstab in Live CD so that nis/yp won't complain
 touch /etc/fstab
 
+# Configure dhcpcd for live system
+configure_dhcpcd_for_live_system
+
 # Append /sbin and /usr/sbin in the system PATH 
 echo "export PATH=\$PATH:/sbin:/usr/sbin" >> /etc/profile
 echo "export PATH=\$PATH:/sbin:/usr/sbin" >> /etc/bash.bashrc
