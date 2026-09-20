@@ -91,7 +91,7 @@ ocs_interactive() {
       trap "[ -f \"$TMP_UOAB\" ] && rm -f \$TMP_UOAB" HUP INT QUIT TERM EXIT
       $DIA --backtitle "$msg_nchc_free_software_labs" \
            --title "$msg_nchc_clonezilla" \
-           --menu "Choose if you want to use Clonezilla alias block device name (i.e., ocs-*d*):" \
+           --menu "$msg_ocs_alias_block_dev_des" \
            0 0 0 $DIA_ESC \
            " "     "Use Linux kernel block device name (i.e., sd*, nvme*...)" \
            "-uoab" "Use Clonezilla alias block device name (i.e., ocs-*d*)" \
