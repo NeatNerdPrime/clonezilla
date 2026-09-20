@@ -37,6 +37,8 @@ do_update_initrd="yes"
 d2d_psuedo_img="d2d-pseudo"
 # By default we do not enable read/write direct IO for Partclone
 enable_dio="no"
+# Default not to use ocs alias block device name
+use_ocs_alias_blkdev="no"
 # Put Clonezilla related log files to Clonezilla live USB drive or not.
 put_log_usb=""
 # Default not to use reverse connection
@@ -679,6 +681,7 @@ USAGE() {
     echo "-t1, --restore-raw-mbr   Restores the prebuilt bootloader from syslinux (For Windows only)"
     echo "-t2, --no-restore-ebr    Do NOT restore the EBR (Extended Boot Record) when restoring image. Default is to restore"
     echo "-v, --verbose            Prints verbose information"
+    echo "-uoab, --use-ocs-alias-blkdev  Use Clonezilla alias block device name (i.e., ocs-*d*)"
     echo "-np --net-pipe  PROGRAM  Use PROGRAM as network pipe program. Available: netcat, nuttcp. Default is $netpipe_default"
     echo "-rv, --reverse-connection  Reverse the connection initiation in network clone (Destination machine listens, Source machine connects)."
     echo "-x, --interactive        Interactive mode."
@@ -1235,6 +1238,7 @@ parse_ocs_onthefly_cmd_options() {
       -edio|--enable-direct-io) shift; enable_dio="yes";;
       -rv|--reverse-connection) shift; reverse_connection="yes"; export reverse_connection;;
       -v|--verbose) shift; verbose="on";;
+      -uoab|--use-ocs-alias-blkdev) shift; use_ocs_alias_blkdev="yes";;
       -*)     echo "${0}: ${1}: invalid option" >&2
               USAGE >& 2
               exit 2 ;;
@@ -1555,6 +1559,9 @@ ask_ocs_onthefly_dest_dev() {
       check_if_input_device_exist $ANS_TMP $target_hd 
       tgt_dev="$(cat $ANS_TMP | tr -d \")"
       [ -f "$ANS_TMP" ] && rm -f $ANS_TMP
+      if [ "$use_ocs_alias_blkdev" = "yes" ]; then
+        tgt_dev="$target_hd_ad"
+      fi
       ;;
    "restoreparts")
       get_target_parts_name_from_local_machine "$msg_choose_the_parts_to_restore \n$msg_linux_parts_MS_mapping" "checklist"
@@ -1566,6 +1573,9 @@ ask_ocs_onthefly_dest_dev() {
       # will work (Specially for FC3/4...)
       tgt_dev="$(cat $ANS_TMP | tr -d \")"
       [ -f "$ANS_TMP" ] && rm -f $ANS_TMP
+      if [ "$use_ocs_alias_blkdev" = "yes" ]; then
+        tgt_dev="$target_parts_ad"
+      fi
       ;;
   esac
 } # end of ask_ocs_onthefly_dest_dev
