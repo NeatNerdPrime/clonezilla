@@ -1,3 +1,15 @@
+clonezilla (5.18.12-drbl1) unstable; urgency=medium
+
+  * Add option "-uoab" to ocs-onthefly
+  * Add a dialog in clonezilla main menu so that we can choose to use
+    Clonezilla alias block device name based on the PCI bus order.
+    Their names are ocs-?d*, e.g.,
+    NVMe device: ocs-nd01, ocs-nd02...
+    SATA/SAS/SCSI/USB device: ocs-sd01, ocs-sd02... and USB one will be in low priority
+    EMMC device: ocs-md01, ocs-md02...
+
+ -- Steven Shiau <steven@clonezilla.org>  Sun, 20 Sep 2026 18:35:21 +0800
+
 clonezilla (5.18.11-drbl1) unstable; urgency=medium
 
   * configure dhcpcd to use clientid for stable IP reservations.
