@@ -4762,6 +4762,7 @@ get_not_busy_disks_or_parts() {
 } # end of get_not_busy_disks_or_parts
 #
 get_input_dev_name() {
+    ask_use_ocs_alias_blkdev
     # input param, [harddisk|partition]
     # To specify it's hardisk or partition
     # return the hardisks or partitions
@@ -8768,7 +8769,6 @@ get_target_hd_name_from_local_machine() {
   # target_hd is a global variable
   local input_dev_prompt="$1"
   local input_selection_opt="$2"
-  ask_use_ocs_alias_blkdev
   local ANS_TMP
   local ASK_DEV_NAME=1
   target_hd=
@@ -8793,7 +8793,6 @@ get_target_parts_name_from_local_machine() {
   # target_parts is a global variable
   local input_dev_prompt="$1"
   local input_selection_opt="$2"
-  ask_use_ocs_alias_blkdev
   local ANS_TMP
   local ASK_DEV_NAME=1
   target_parts=
