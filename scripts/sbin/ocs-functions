@@ -8721,10 +8721,54 @@ get_target_dir_name_when_saving() {
   # Note! We won't add leading $ocsroot in $target_dir, because when task_saveparts do the real job later, it will add that.
 } # end of get_target_dir_name_when_saving
 #
+ask_use_ocs_alias_blkdev() {
+  # This function prompts the user via a dialog menu to enable use_ocs_alias_blkdev
+  # It sets use_ocs_alias_blkdev to "yes" or "no"
+  # and writes it to /etc/ocs/ocs-live.conf if in Clonezilla live environment.
+  [ -z "$DIA" ] && return 0
+  [ "$ask_use_ocs_alias_blkdev_done" = "yes" ] && return 0
+
+  local TMP_UOAB="$(mktemp /tmp/uoabmenu.XXXXXX)"
+  trap "[ -f \"$TMP_UOAB\" ] && rm -f \$TMP_UOAB" HUP INT QUIT TERM EXIT
+  $DIA --backtitle "$msg_nchc_free_software_labs" \
+       --title "$msg_nchc_clonezilla" \
+       --menu "$msg_ocs_alias_block_dev_des" \
+       0 0 0 $DIA_ESC \
+       " "     "Use Linux kernel block device name (i.e., sd*, nvme*...)" \
+       "-uoab" "Use Clonezilla alias block device name (i.e., ocs-*d*)" \
+       2> $TMP_UOAB
+  local ret=$?
+  local choice="$(cat $TMP_UOAB)"
+  [ -f "$TMP_UOAB" ] && rm -f $TMP_UOAB
+
+  if [ $ret -eq 0 ]; then
+    if [ "$choice" = "-uoab" ]; then
+      use_ocs_alias_blkdev="yes"
+    else
+      use_ocs_alias_blkdev="no"
+    fi
+  else
+    use_ocs_alias_blkdev="no"
+  fi
+
+  export use_ocs_alias_blkdev
+  ask_use_ocs_alias_blkdev_done="yes"
+  export ask_use_ocs_alias_blkdev_done
+
+  if [ -f "/etc/ocs/ocs-live.conf" ]; then
+    if [ -z "$(grep -E "^[[:space:]]*use_ocs_alias_blkdev=" /etc/ocs/ocs-live.conf 2>/dev/null)" ]; then
+      echo "use_ocs_alias_blkdev=\"$use_ocs_alias_blkdev\"" >> /etc/ocs/ocs-live.conf
+    else
+      perl -pi -e "s|^[[:space:]]*use_ocs_alias_blkdev=.*|use_ocs_alias_blkdev=\"$use_ocs_alias_blkdev\"|g" /etc/ocs/ocs-live.conf
+    fi
+  fi
+} # end of ask_use_ocs_alias_blkdev
+#
 get_target_hd_name_from_local_machine() {
   # target_hd is a global variable
   local input_dev_prompt="$1"
   local input_selection_opt="$2"
+  ask_use_ocs_alias_blkdev
   local ANS_TMP
   local ASK_DEV_NAME=1
   target_hd=
@@ -8749,6 +8793,7 @@ get_target_parts_name_from_local_machine() {
   # target_parts is a global variable
   local input_dev_prompt="$1"
   local input_selection_opt="$2"
+  ask_use_ocs_alias_blkdev
   local ANS_TMP
   local ASK_DEV_NAME=1
   target_parts=

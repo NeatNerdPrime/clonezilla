@@ -84,29 +84,12 @@ ocs_interactive() {
        ;;
   esac
   #
-  local uoab_opt=""
   case "$ocs_live_type" in
-    device-image|device-device|remote-source|remote-dest|lite-server)
-      local TMP_UOAB="$(mktemp /tmp/uoabmenu.XXXXXX)"
-      trap "[ -f \"$TMP_UOAB\" ] && rm -f \$TMP_UOAB" HUP INT QUIT TERM EXIT
-      $DIA --backtitle "$msg_nchc_free_software_labs" \
-           --title "$msg_nchc_clonezilla" \
-           --menu "$msg_ocs_alias_block_dev_des" \
-           0 0 0 $DIA_ESC \
-           " "     "Use Linux kernel block device name (i.e., sd*, nvme*...)" \
-           "-uoab" "Use Clonezilla alias block device name (i.e., ocs-*d*)" \
-           2> $TMP_UOAB
-      uoab_opt="$(cat $TMP_UOAB)"
-      [ -f "$TMP_UOAB" ] && rm -f $TMP_UOAB
-      ;;
-  esac
-  #
-  case "$ocs_live_type" in
-    device-image)  ocs-live -l $lang $postaction_opt $dev_img_opt $uoab_opt;;
-    device-device) ocs-onthefly -l $lang $postaction_opt -x -lo $uoab_opt;;
-    remote-source) ocs-onthefly -l $lang $postaction_opt -x -ro $uoab_opt;;
-    remote-dest)   ocs-onthefly -l $lang $postaction_opt -s ask_user -d ask_user $uoab_opt;;
-    lite-server)   ocs-live-feed-img $uoab_opt;;
+    device-image)  ocs-live -l $lang $postaction_opt $dev_img_opt;;
+    device-device) ocs-onthefly -l $lang $postaction_opt -x -lo;;
+    remote-source) ocs-onthefly -l $lang $postaction_opt -x -ro;;
+    remote-dest)   ocs-onthefly -l $lang $postaction_opt -s ask_user -d ask_user;;
+    lite-server)   ocs-live-feed-img;;
     lite-client)   ocs-live-get-img;;
   esac
 } # end of ocs_interactive
