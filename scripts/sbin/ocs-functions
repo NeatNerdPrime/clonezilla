@@ -8729,6 +8729,38 @@ ask_use_ocs_alias_blkdev() {
   [ -z "$DIA" ] && return 0
   [ "$ask_use_ocs_alias_blkdev_done" = "yes" ] && return 0
 
+  # If it is already set to yes (e.g., from command line option), skip asking
+  if [ "$use_ocs_alias_blkdev" = "yes" ]; then
+    ask_use_ocs_alias_blkdev_done="yes"
+    export ask_use_ocs_alias_blkdev_done
+    return 0
+  fi
+
+  # Check shared state file to prevent duplicate prompts in separate processes or subshells
+  local state_file="/tmp/use_ocs_alias_blkdev.state"
+  if [ -f "$state_file" ]; then
+    use_ocs_alias_blkdev="$(cat "$state_file")"
+    export use_ocs_alias_blkdev
+    ask_use_ocs_alias_blkdev_done="yes"
+    export ask_use_ocs_alias_blkdev_done
+    return 0
+  fi
+
+  # If we are in Clonezilla live environment, check if it was already configured in ocs-live.conf
+  if [ -f "/etc/ocs/ocs-live.conf" ]; then
+    if grep -E -q "^[[:space:]]*use_ocs_alias_blkdev=" /etc/ocs/ocs-live.conf 2>/dev/null; then
+      local val="$(grep -E "^[[:space:]]*use_ocs_alias_blkdev=" /etc/ocs/ocs-live.conf 2>/dev/null | cut -d= -f2 | tr -d '"'\''')"
+      if [ -n "$val" ]; then
+        use_ocs_alias_blkdev="$val"
+        export use_ocs_alias_blkdev
+        ask_use_ocs_alias_blkdev_done="yes"
+        export ask_use_ocs_alias_blkdev_done
+        echo "$use_ocs_alias_blkdev" > "$state_file"
+        return 0
+      fi
+    fi
+  fi
+
   local TMP_UOAB="$(mktemp /tmp/uoabmenu.XXXXXX)"
   trap "[ -f \"$TMP_UOAB\" ] && rm -f \$TMP_UOAB" HUP INT QUIT TERM EXIT
   $DIA --backtitle "$msg_nchc_free_software_labs" \
@@ -8755,6 +8787,7 @@ ask_use_ocs_alias_blkdev() {
   export use_ocs_alias_blkdev
   ask_use_ocs_alias_blkdev_done="yes"
   export ask_use_ocs_alias_blkdev_done
+  echo "$use_ocs_alias_blkdev" > "$state_file"
 
   if [ -f "/etc/ocs/ocs-live.conf" ]; then
     if [ -z "$(grep -E "^[[:space:]]*use_ocs_alias_blkdev=" /etc/ocs/ocs-live.conf 2>/dev/null)" ]; then

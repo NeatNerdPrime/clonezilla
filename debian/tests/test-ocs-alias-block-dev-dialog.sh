@@ -5,7 +5,9 @@ set -e
 
 echo "=== Running ask_use_ocs_alias_blkdev Dialog Tests ==="
 
-# Source the functions script
+# Clean up any potential state file from previous system/interactive runs
+rm -f /tmp/use_ocs_alias_blkdev.state
+
 # Mock some required global variables/messages first
 msg_nchc_free_software_labs="NCHC Free Software Labs"
 msg_nchc_clonezilla="Clonezilla"
@@ -65,7 +67,7 @@ ask_use_ocs_alias_blkdev_done="no"
 
 # Mock ocs-live.conf path
 CONF_DIR=$(mktemp -d)
-trap "rm -rf $CONF_DIR" EXIT
+trap "rm -rf $CONF_DIR; rm -f /tmp/use_ocs_alias_blkdev.state" EXIT
 # Touch the config file first so -f check succeeds, simulating clonezilla live environment
 touch "$CONF_DIR/ocs-live-test.conf"
 
@@ -85,19 +87,35 @@ if [ "$ask_use_ocs_alias_blkdev_done" != "yes" ]; then
   exit 1
 fi
 
-# Verify writing to ocs-live.conf
-if [ ! -f "$CONF_DIR/ocs-live-test.conf" ]; then
-  echo "FAIL: Expected ocs-live.conf to be created, but it does not exist"
+# Verify state file was created and contains "yes"
+if [ ! -f "/tmp/use_ocs_alias_blkdev.state" ]; then
+  echo "FAIL: Expected /tmp/use_ocs_alias_blkdev.state to exist"
+  exit 1
+fi
+STATE_CONTENT=$(cat "/tmp/use_ocs_alias_blkdev.state")
+if [ "$STATE_CONTENT" != "yes" ]; then
+  echo "FAIL: Expected state file content to be 'yes', but got '$STATE_CONTENT'"
   exit 1
 fi
 
-CONF_CONTENT=$(cat "$CONF_DIR/ocs-live-test.conf")
-if [[ "$CONF_CONTENT" != *'use_ocs_alias_blkdev="yes"'* ]]; then
-  echo "FAIL: Expected conf file to contain use_ocs_alias_blkdev=\"yes\", but got: $CONF_CONTENT"
+# Test 4: Skip when state file exists
+echo "Testing behavior when state file already exists..."
+DIA="mock_dia"
+use_ocs_alias_blkdev="default"
+ask_use_ocs_alias_blkdev_done="no"
+
+ask_use_ocs_alias_blkdev
+
+if [ "$use_ocs_alias_blkdev" != "yes" ]; then
+  echo "FAIL: Expected use_ocs_alias_blkdev='yes' (loaded from state file), but got '$use_ocs_alias_blkdev'"
+  exit 1
+fi
+if [ "$ask_use_ocs_alias_blkdev_done" != "yes" ]; then
+  echo "FAIL: Expected ask_use_ocs_alias_blkdev_done='yes', but got '$ask_use_ocs_alias_blkdev_done'"
   exit 1
 fi
 
-# Test 4: Prompting and selecting " " (space)
+# Test 5: Prompting and selecting " " (space)
 echo "Testing selection of empty/space (defaulting to no)..."
 DIA="mock_dia_space"
 mock_dia_space() {
@@ -106,8 +124,13 @@ mock_dia_space() {
 }
 export -f mock_dia_space
 
-# Reset done flag and run again
+# Clean up state file and truncate the config file to force prompt
+rm -f /tmp/use_ocs_alias_blkdev.state
+echo "" > "$CONF_DIR/ocs-live-test.conf"
+
+# Reset variables to prevent test state-leaks
 ask_use_ocs_alias_blkdev_done="no"
+use_ocs_alias_blkdev="default"
 # Change mock DIA in the eval'd code
 eval "${TEST_FUNC_CODE//\$DIA/mock_dia_space}"
 
@@ -121,6 +144,25 @@ fi
 CONF_CONTENT=$(cat "$CONF_DIR/ocs-live-test.conf")
 if [[ "$CONF_CONTENT" != *'use_ocs_alias_blkdev="no"'* ]]; then
   echo "FAIL: Expected conf file to update to use_ocs_alias_blkdev=\"no\", but got: $CONF_CONTENT"
+  exit 1
+fi
+
+# Test 6: Skip when already configured in ocs-live.conf
+echo "Testing skip when already configured in ocs-live.conf..."
+rm -f /tmp/use_ocs_alias_blkdev.state
+ask_use_ocs_alias_blkdev_done="no"
+use_ocs_alias_blkdev="default"
+
+# ocs-live-test.conf currently contains 'use_ocs_alias_blkdev="no"'
+eval "$TEST_FUNC_CODE"
+ask_use_ocs_alias_blkdev
+
+if [ "$use_ocs_alias_blkdev" != "no" ]; then
+  echo "FAIL: Expected use_ocs_alias_blkdev='no' (loaded from ocs-live.conf), but got '$use_ocs_alias_blkdev'"
+  exit 1
+fi
+if [ "$ask_use_ocs_alias_blkdev_done" != "yes" ]; then
+  echo "FAIL: Expected ask_use_ocs_alias_blkdev_done='yes', but got '$ask_use_ocs_alias_blkdev_done'"
   exit 1
 fi
 
