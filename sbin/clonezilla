@@ -34,6 +34,7 @@ USAGE() {
     echo " -p, --postaction [choose|poweroff|reboot|command|CMD]     When save/restoration finishs, choose action in the client, poweroff, reboot (default), in command prompt or run CMD"
     echo " -s, --skip-lite-menu  Do not show live-server and lite-client in the dialog menu."
     echo " -n, --no-wait-before-exit  Do not wait for pressing Enter key before exiting. Just quit."
+    echo " -ruoab, --reset-use-ocs-alias-blkdev Reset the 'use_ocs_alias_blkdev' prompt status so it will ask again."
     echo "Ex. $0 -l en"
 } # end of USAGE
 #
@@ -124,6 +125,9 @@ while [ $# -gt 0 ]; do
     -k|--skip-ocs-prep-repo)  
 	    do_prep_ocsroot="no"; shift;;
     -n|--no-wait-before-exit)  wait_before_exit="no"; shift;;
+    -ruoab|--reset-use-ocs-alias-blkdev)
+            reset_use_ocs_alias_blkdev
+            exit 0;;
     -*)     echo "${0}: ${1}: invalid option" >&2
             USAGE >& 2
             exit 2 ;;

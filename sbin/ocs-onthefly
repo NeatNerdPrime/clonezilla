@@ -682,6 +682,7 @@ USAGE() {
     echo "-t2, --no-restore-ebr    Do NOT restore the EBR (Extended Boot Record) when restoring image. Default is to restore"
     echo "-v, --verbose            Prints verbose information"
     echo "-uoab, --use-ocs-alias-blkdev  Use Clonezilla alias block device name (i.e., ocs-*d*)"
+    echo "-ruoab, --reset-use-ocs-alias-blkdev Reset the 'use_ocs_alias_blkdev' prompt status so it will ask again."
     echo "-np --net-pipe  PROGRAM  Use PROGRAM as network pipe program. Available: netcat, nuttcp. Default is $netpipe_default"
     echo "-rv, --reverse-connection  Reverse the connection initiation in network clone (Destination machine listens, Source machine connects)."
     echo "-x, --interactive        Interactive mode."
@@ -1239,6 +1240,7 @@ parse_ocs_onthefly_cmd_options() {
       -rv|--reverse-connection) shift; reverse_connection="yes"; export reverse_connection;;
       -v|--verbose) shift; verbose="on";;
       -uoab|--use-ocs-alias-blkdev) shift; use_ocs_alias_blkdev="yes";;
+      -ruoab|--reset-use-ocs-alias-blkdev) shift; reset_use_ocs_alias_blkdev; exit 0;;
       -*)     echo "${0}: ${1}: invalid option" >&2
               USAGE >& 2
               exit 2 ;;

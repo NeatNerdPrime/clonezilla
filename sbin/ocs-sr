@@ -781,6 +781,9 @@ parse_ocs_sr_cmd_options_with_dash() {
     -uoab|--use-ocs-alias-blkdev)
             use_ocs_alias_blkdev="yes"
 	    shift; n_shift=$((n_shift+1));;
+    -ruoab|--reset-use-ocs-alias-blkdev)
+            reset_use_ocs_alias_blkdev
+            exit 0;;
     -dblk|--decrypt-bitlocker)
             shift; n_shift=$((n_shift+1)); 
             # skip the -xx option, in case 

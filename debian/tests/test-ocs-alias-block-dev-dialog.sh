@@ -1,12 +1,12 @@
 #!/bin/bash
-# Standalone test for ocs-functions ask_use_ocs_alias_blkdev function.
+# Standalone test for ocs-functions ask_use_ocs_alias_blkdev & reset_use_ocs_alias_blkdev functions, and clonezilla reset option.
 
 set -e
 
-echo "=== Running ask_use_ocs_alias_blkdev Dialog Tests ==="
+echo "=== Running ask_use_ocs_alias_blkdev Dialog and Reset Tests ==="
 
 # Clean up any potential state file from previous system/interactive runs
-rm -f /tmp/use_ocs_alias_blkdev.state
+rm -f /tmp/use_ocs_alias_blkdev.state /run/live/use_ocs_alias_blkdev.state
 
 # Mock some required global variables/messages first
 msg_nchc_free_software_labs="NCHC Free Software Labs"
@@ -21,6 +21,14 @@ if [ -z "$FUNC_CODE" ]; then
   exit 1
 fi
 eval "$FUNC_CODE"
+
+# Load reset_use_ocs_alias_blkdev function from scripts/sbin/ocs-functions
+RESET_FUNC_CODE=$(sed -n '/^reset_use_ocs_alias_blkdev() {/,/^} # end of reset_use_ocs_alias_blkdev/p' scripts/sbin/ocs-functions)
+if [ -z "$RESET_FUNC_CODE" ]; then
+  echo "FAIL: Could not extract reset_use_ocs_alias_blkdev from ocs-functions"
+  exit 1
+fi
+eval "$RESET_FUNC_CODE"
 
 # Test 1: Skip if DIA is empty
 echo "Testing behavior when DIA is empty..."
@@ -52,8 +60,8 @@ if [ "$use_ocs_alias_blkdev" != "default" ]; then
   exit 1
 fi
 
-# Test 3: Prompting and selecting -uoab
-echo "Testing selection of -uoab..."
+# Test 3: Prompting and selecting -uoab (with /tmp/ fallback)
+echo "Testing selection of -uoab with fallback state_file..."
 DIA="mock_dia"
 mock_dia() {
   # Write "-uoab" to the output descriptor (which is 2 in our function)
@@ -67,7 +75,7 @@ ask_use_ocs_alias_blkdev_done="no"
 
 # Mock ocs-live.conf path
 CONF_DIR=$(mktemp -d)
-trap "rm -rf $CONF_DIR; rm -f /tmp/use_ocs_alias_blkdev.state" EXIT
+trap "rm -rf $CONF_DIR; rm -f /tmp/use_ocs_alias_blkdev.state /run/live/use_ocs_alias_blkdev.state" EXIT
 # Touch the config file first so -f check succeeds, simulating clonezilla live environment
 touch "$CONF_DIR/ocs-live-test.conf"
 
@@ -87,7 +95,7 @@ if [ "$ask_use_ocs_alias_blkdev_done" != "yes" ]; then
   exit 1
 fi
 
-# Verify state file was created and contains "yes"
+# Verify fallback state file was created and contains "yes"
 if [ ! -f "/tmp/use_ocs_alias_blkdev.state" ]; then
   echo "FAIL: Expected /tmp/use_ocs_alias_blkdev.state to exist"
   exit 1
@@ -115,7 +123,32 @@ if [ "$ask_use_ocs_alias_blkdev_done" != "yes" ]; then
   exit 1
 fi
 
-# Test 5: Prompting and selecting " " (space)
+# Test 5: Testing with mock /run/live directory
+echo "Testing behavior with mock /run/live directory..."
+rm -f /tmp/use_ocs_alias_blkdev.state
+ask_use_ocs_alias_blkdev_done="no"
+use_ocs_alias_blkdev="default"
+
+MOCK_RUN_LIVE=$(mktemp -d)
+# Substitute /run/live with our temp directory in the function
+MOCK_RUN_LIVE_FUNC_CODE="${TEST_FUNC_CODE//\/run\/live/$MOCK_RUN_LIVE}"
+eval "$MOCK_RUN_LIVE_FUNC_CODE"
+
+ask_use_ocs_alias_blkdev
+
+if [ "$use_ocs_alias_blkdev" != "yes" ]; then
+  echo "FAIL: Expected use_ocs_alias_blkdev='yes' (with mock /run/live), but got '$use_ocs_alias_blkdev'"
+  exit 1
+fi
+
+# Verify state file was created in mock run live directory
+if [ ! -f "$MOCK_RUN_LIVE/use_ocs_alias_blkdev.state" ]; then
+  echo "FAIL: Expected mock run live state file to exist"
+  exit 1
+fi
+rm -rf "$MOCK_RUN_LIVE"
+
+# Test 6: Prompting and selecting " " (space)
 echo "Testing selection of empty/space (defaulting to no)..."
 DIA="mock_dia_space"
 mock_dia_space() {
@@ -147,7 +180,7 @@ if [[ "$CONF_CONTENT" != *'use_ocs_alias_blkdev="no"'* ]]; then
   exit 1
 fi
 
-# Test 6: Skip when already configured in ocs-live.conf
+# Test 7: Skip when already configured in ocs-live.conf
 echo "Testing skip when already configured in ocs-live.conf..."
 rm -f /tmp/use_ocs_alias_blkdev.state
 ask_use_ocs_alias_blkdev_done="no"
@@ -166,5 +199,65 @@ if [ "$ask_use_ocs_alias_blkdev_done" != "yes" ]; then
   exit 1
 fi
 
-echo "PASS: All ask_use_ocs_alias_blkdev assertions passed successfully!"
+# Test 8: Unit test reset_use_ocs_alias_blkdev function directly
+echo "Unit testing reset_use_ocs_alias_blkdev function..."
+touch /tmp/use_ocs_alias_blkdev.state
+# Mock ocs-live.conf
+echo 'use_ocs_alias_blkdev="yes"' > "$CONF_DIR/ocs-live-test.conf"
+
+TEST_RESET_FUNC_CODE="${RESET_FUNC_CODE//\/etc\/ocs\/ocs-live.conf/$CONF_DIR/ocs-live-test.conf}"
+eval "$TEST_RESET_FUNC_CODE"
+
+reset_use_ocs_alias_blkdev
+
+if [ -f "/tmp/use_ocs_alias_blkdev.state" ]; then
+  echo "FAIL: Expected /tmp/use_ocs_alias_blkdev.state to be deleted by reset function"
+  exit 1
+fi
+CONF_CONTENT=$(cat "$CONF_DIR/ocs-live-test.conf")
+if [[ "$CONF_CONTENT" == *"use_ocs_alias_blkdev="* ]]; then
+  echo "FAIL: Expected use_ocs_alias_blkdev to be removed from mock config, but got: $CONF_CONTENT"
+  exit 1
+fi
+
+# Test 9: Test sbin/clonezilla -ruoab reset option
+echo "Testing sbin/clonezilla -ruoab reset option..."
+# Back up real /etc/ocs/ocs-live.conf if it exists
+if [ -f "/etc/ocs/ocs-live.conf" ]; then
+  mv /etc/ocs/ocs-live.conf /etc/ocs/ocs-live.conf.bak
+fi
+mkdir -p /etc/ocs
+
+# 1. Simulate state files and config
+touch /tmp/use_ocs_alias_blkdev.state
+echo 'use_ocs_alias_blkdev="yes"' > /etc/ocs/ocs-live.conf
+
+# 2. Run reset with development copy scripts/sbin/ocs-functions sourced cleanly via a mock DRBL dir
+MOCK_DRBL_DIR=$(mktemp -d)
+mkdir -p "$MOCK_DRBL_DIR/sbin"
+for f in /usr/share/drbl/sbin/*; do
+  ln -sf "$f" "$MOCK_DRBL_DIR/sbin/$(basename "$f")"
+done
+ln -sf /root/clonezilla/scripts/sbin/ocs-functions "$MOCK_DRBL_DIR/sbin/ocs-functions"
+
+DRBL_SCRIPT_PATH="$MOCK_DRBL_DIR" bash sbin/clonezilla -ruoab
+rm -rf "$MOCK_DRBL_DIR"
+
+# 3. Assert they are deleted / removed
+if [ -f "/tmp/use_ocs_alias_blkdev.state" ]; then
+  echo "FAIL: Expected /tmp/use_ocs_alias_blkdev.state to be deleted by clonezilla -ruoab"
+  exit 1
+fi
+if grep -q "use_ocs_alias_blkdev" /etc/ocs/ocs-live.conf 2>/dev/null; then
+  echo "FAIL: Expected use_ocs_alias_blkdev preference to be removed from ocs-live.conf"
+  exit 1
+fi
+
+# Restore backup
+rm -f /etc/ocs/ocs-live.conf
+if [ -f "/etc/ocs/ocs-live.conf.bak" ]; then
+  mv /etc/ocs/ocs-live.conf.bak /etc/ocs/ocs-live.conf
+fi
+
+echo "PASS: All ask_use_ocs_alias_blkdev and reset assertions passed successfully!"
 exit 0

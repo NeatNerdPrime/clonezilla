@@ -8737,7 +8737,12 @@ ask_use_ocs_alias_blkdev() {
   fi
 
   # Check shared state file to prevent duplicate prompts in separate processes or subshells
-  local state_file="/tmp/use_ocs_alias_blkdev.state"
+  local state_file
+  if [ -d "/run/live" ] && [ -w "/run/live" ]; then
+    state_file="/run/live/use_ocs_alias_blkdev.state"
+  else
+    state_file="/tmp/use_ocs_alias_blkdev.state"
+  fi
   if [ -f "$state_file" ]; then
     use_ocs_alias_blkdev="$(cat "$state_file")"
     export use_ocs_alias_blkdev
@@ -8797,6 +8802,16 @@ ask_use_ocs_alias_blkdev() {
     fi
   fi
 } # end of ask_use_ocs_alias_blkdev
+#
+reset_use_ocs_alias_blkdev() {
+  # This function resets the use_ocs_alias_blkdev prompt status
+  echo "Resetting use_ocs_alias_blkdev prompt status..."
+  rm -f /tmp/use_ocs_alias_blkdev.state /run/live/use_ocs_alias_blkdev.state
+  if [ -f "/etc/ocs/ocs-live.conf" ]; then
+    sed -i '/^[[:space:]]*use_ocs_alias_blkdev=/d' /etc/ocs/ocs-live.conf
+  fi
+  echo "Status reset completed successfully."
+} # end of reset_use_ocs_alias_blkdev
 #
 get_target_hd_name_from_local_machine() {
   # target_hd is a global variable
@@ -11760,6 +11775,7 @@ USAGE_common_general() {
     echo " -rmtd, --restore-mtdblock   Restore MTD block device (/dev/mtdblock*)"
     echo " -rmmcb, --restore-mmcblk    Restore eMMC boot device (/dev/mmcblk*boot*)"
     echo " -uoab, --use-ocs-alias-blkdev  Use Clonezilla alias block device name (i.e., ocs-*d*)"
+    echo " -ruoab, --reset-use-ocs-alias-blkdev Reset the 'use_ocs_alias_blkdev' prompt status so it will ask again."
     echo " -reluks, --reencrypt-luks   Reencrypt LUKS encrypted volumes (change master key) in-place in the destination device"
     echo " -v, --verbose            Prints verbose information"
 } # end of USAGE_common_general
