@@ -17729,8 +17729,8 @@ get_mapped_kernel_or_ocs_blkname() {
   all_devs="$*"
   in_dev_=${all_devs//\/dev\//} # Input is like /dev/sda, so in_dev_ becomes sda
   ocs_dev_dir_name="${ocs_dev_dir##*/}"
-  [ -z "$ocs_dev_dir_name" ] && ocs_dev_dir_name="ocs-disks"
-  in_dev_=${in_dev_//${ocs_dev_dir_name}\//} # If it's /dev/ocs-disks/ ($ocs_dev_dir from drbl-ocs.conf), remove it, too.
+  [ -z "$ocs_dev_dir_name" ] && ocs_dev_dir_name="ocs-blkdev"
+  in_dev_=${in_dev_//${ocs_dev_dir_name}\//} # If it's /dev/ocs-blkdev/ ($ocs_dev_dir from drbl-ocs.conf), remove it, too.
   [ ! -e $ocs_dev_dir/dev-mapping.txt ] && return 3
   for dv in $in_dev_; do
     if [[ "$dv" =~ ^ocs-[smn]d[0-9]+ ]]; then
