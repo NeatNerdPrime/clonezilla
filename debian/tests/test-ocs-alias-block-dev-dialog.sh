@@ -259,5 +259,33 @@ if [ -f "/etc/ocs/ocs-live.conf.bak" ]; then
   mv /etc/ocs/ocs-live.conf.bak /etc/ocs/ocs-live.conf
 fi
 
+# Test 10: Test get_mapped_kernel_or_ocs_blkname dynamic path stripping
+echo "Testing get_mapped_kernel_or_ocs_blkname dynamic stripping..."
+# Load the function
+MAPPED_NAME_CODE=$(sed -n '/^get_mapped_kernel_or_ocs_blkname() {/,/^} # end of get_mapped_kernel_or_ocs_blkname/p' scripts/sbin/ocs-functions)
+if [ -z "$MAPPED_NAME_CODE" ]; then
+  echo "FAIL: Could not extract get_mapped_kernel_or_ocs_blkname"
+  exit 1
+fi
+eval "$MAPPED_NAME_CODE"
+
+# Create a mock mapping file
+MOCK_MAPPED_DIR=$(mktemp -d)
+mkdir -p "$MOCK_MAPPED_DIR/mock-alias-disks"
+echo "ocs-sd01 sda mock_path" > "$MOCK_MAPPED_DIR/mock-alias-disks/dev-mapping.txt"
+
+# Set the variable
+ocs_dev_dir="$MOCK_MAPPED_DIR/mock-alias-disks"
+
+# Resolve mapped name with a mocked path
+res_val=$(get_mapped_kernel_or_ocs_blkname "/dev/mock-alias-disks/ocs-sd01")
+
+if [[ "$res_val" != *"sda"* ]]; then
+  echo "FAIL: Expected mapped kernel block name to contain sda, but got '$res_val'"
+  exit 1
+fi
+
+rm -rf "$MOCK_MAPPED_DIR"
+
 echo "PASS: All ask_use_ocs_alias_blkdev and reset assertions passed successfully!"
 exit 0
