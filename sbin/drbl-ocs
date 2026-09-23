@@ -764,6 +764,9 @@ while [ $# -gt 0 ]; do
     -uoab|--use-ocs-alias-blkdev)
 	    OCS_OPT="$OCS_OPT -uoab"
 	    shift;;
+    -ruoab|--reset-use-ocs-alias-blkdev)
+            reset_use_ocs_alias_blkdev
+            exit 0;;
     -dblk|--decrypt-bitlocker)
             shift
             # skip the -xx option, in case 

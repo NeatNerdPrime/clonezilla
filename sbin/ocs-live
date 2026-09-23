@@ -21,6 +21,8 @@ USAGE() {
     language_help_prompt_by_idx_no
     echo " -p, --postaction [choose|poweroff|reboot|command|CMD]     When save/restoration finishs, choose action in the client, poweroff, reboot (default), in command prompt or run CMD"
     echo " -s, --skip-ocs-prep-repo  Skip preparing the clonezilla image home directory (assume it's ready)."
+    echo " -uoab, --use-ocs-alias-blkdev  Use Clonezilla alias block device name (i.e., ocs-*d*)"
+    echo " -ruoab, --reset-use-ocs-alias-blkdev Reset the 'use_ocs_alias_blkdev' prompt status so it will ask again."
 }
 #
 start-ocs-prep-repo() {
@@ -56,6 +58,10 @@ while [ $# -gt 0 ]; do
     -uoab|--use-ocs-alias-blkdev)
             use_ocs_alias_blkdev="yes"
             shift
+            ;;
+    -ruoab|--reset-use-ocs-alias-blkdev)
+            reset_use_ocs_alias_blkdev
+            exit 0
             ;;
     -l|--language)
             shift
