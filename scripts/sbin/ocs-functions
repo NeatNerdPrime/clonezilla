@@ -17704,7 +17704,7 @@ disable_stdin_non_blocking_mode() {
 } # end of disable_stdin_non_blocking_mode
 #
 get_mapped_kernel_or_ocs_blkname() {
-  # The contents of /dev/ocs-disks/dev-mapping.txt is like:
+  # The contents of /dev/ocs-blkdev/dev-mapping.txt is like:
   # The OCS block device mapping:
   # --------------------------
   # Clonezilla alias | Linux kernel name | ID_PATH
