@@ -287,5 +287,61 @@ fi
 
 rm -rf "$MOCK_MAPPED_DIR"
 
+# Test 11: Test sorting of alias devices in checklist and menu modes
+echo "Testing alias device sorting order in dialog..."
+# Input kernel devices in non-alias order
+mock_devs="nvme0n1 nvme0n2 nvme0n3 nvme0n4 nvme0n5 sda sdb"
+MOCK_MAPPED_DIR=$(mktemp -d)
+mkdir -p "$MOCK_MAPPED_DIR/ocs-blkdev"
+cat << 'EOF' > "$MOCK_MAPPED_DIR/ocs-blkdev/dev-mapping.txt"
+ocs-nd03 nvme0n1 pci-mock-7
+ocs-nd02 nvme0n2 pci-mock-2
+ocs-nd04 nvme0n3 pci-mock-8
+ocs-nd05 nvme0n4 pci-mock-10
+ocs-nd01 nvme0n5 pci-mock-1
+ocs-sd01 sda     pci-mock-ata1
+ocs-sd02 sdb     pci-mock-ata3
+EOF
+
+ocs_dev_dir="$MOCK_MAPPED_DIR/ocs-blkdev"
+use_ocs_alias_blkdev="yes"
+dev_chosen_def="off"
+dev_items=""
+
+for p in $mock_devs; do
+  DEV_MODEL="dummy_model_for_$p"
+  if [ "$use_ocs_alias_blkdev" = "yes" ]; then
+    ocs_alias_name="$(get_mapped_kernel_or_ocs_blkname "$p" | xargs)"
+    [ -n "$ocs_alias_name" ] && p="${ocs_alias_name}[$p]"
+  fi
+  if [ -n "$dev_chosen_def" ]; then
+    dev_items+="$p $DEV_MODEL $dev_chosen_def"$'\n'
+  else
+    dev_items+="$p $DEV_MODEL"$'\n'
+  fi
+done
+
+HARDDEVS="$(echo -n "$dev_items" | sed '/^$/d' | LC_ALL=C sort -V | tr '\n' ' ')"
+first_item="$(echo $HARDDEVS | awk '{print $1}')"
+second_item="$(echo $HARDDEVS | awk '{print $4}')"
+third_item="$(echo $HARDDEVS | awk '{print $7}')"
+
+if [ "$first_item" != "ocs-nd01[nvme0n5]" ]; then
+  echo "FAIL: Expected first item to be ocs-nd01[nvme0n5], but got: $first_item"
+  exit 1
+fi
+
+if [ "$second_item" != "ocs-nd02[nvme0n2]" ]; then
+  echo "FAIL: Expected second item to be ocs-nd02[nvme0n2], but got: $second_item"
+  exit 1
+fi
+
+if [ "$third_item" != "ocs-nd03[nvme0n1]" ]; then
+  echo "FAIL: Expected third item to be ocs-nd03[nvme0n1], but got: $third_item"
+  exit 1
+fi
+
+rm -rf "$MOCK_MAPPED_DIR"
+
 echo "PASS: All ask_use_ocs_alias_blkdev and reset assertions passed successfully!"
 exit 0

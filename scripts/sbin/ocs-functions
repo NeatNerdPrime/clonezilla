@@ -4775,6 +4775,7 @@ get_input_dev_name() {
     local dev_type selection skip_lvm_raid msg_choose_dev_to_what dev_to_be_exclude
     local dev_list=""
     local HARDDEVS=""
+    local dev_items=""
     local target_dev=""
     local dev_chosen_def=""
     local NUMDEV=0
@@ -4985,14 +4986,18 @@ get_input_dev_name() {
            ;;
        esac
        if [ "$use_ocs_alias_blkdev" = "yes" ]; then
-        # Switch to Clonezilla alias block device name
-        p="$(get_mapped_kernel_or_ocs_blkname "$p")[$p]"
+         # Switch to Clonezilla alias block device name
+         local ocs_alias_name
+         ocs_alias_name="$(get_mapped_kernel_or_ocs_blkname "$p" | xargs)"
+         [ -n "$ocs_alias_name" ] && p="${ocs_alias_name}[$p]"
        fi
-       HARDDEVS+=" $p $DEV_MODEL $dev_chosen_def"
+       if [ -n "$dev_chosen_def" ]; then
+         dev_items+="$p $DEV_MODEL $dev_chosen_def"$'\n'
+       else
+         dev_items+="$p $DEV_MODEL"$'\n'
+       fi
     done
-    # Use xargs first to trim the white space in the leading space.
-    HARDDEVS="$(echo "$HARDDEVS" | xargs | sed "s/ $dev_chosen_def / $dev_chosen_def\n/g" \
-	        | sed '/^$/d' | sort -V | tr '\n' ' ' | xargs)"
+    HARDDEVS="$(echo -n "$dev_items" | sed '/^$/d' | LC_ALL=C sort -V | tr '\n' ' ')"
     echo " done!"
     :> $TMP # Clean the TMP file
     # If large number of devices, we must allow it to be scrolled down.
@@ -17739,7 +17744,7 @@ get_mapped_kernel_or_ocs_blkname() {
                     2>/dev/null | awk -F" " '{print $2}')"
     else
       # From kernel device name to Clonezilla alias name
-      out_dev_+=" $(grep -Ew "[[:space:]]+${dv}[[:space:]]+" \
+      out_dev_+=" $(grep -E "[[:space:]]+${dv}[[:space:]]+" \
 	            $ocs_dev_dir/dev-mapping.txt 2>/dev/null \
 		    | awk -F" " '{print $1}')"
     fi
