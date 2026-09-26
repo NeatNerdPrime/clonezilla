@@ -1,3 +1,12 @@
+clonezilla (5.19.2-drbl1) unstable; urgency=medium
+
+  * Sort TUI block device list by Clonezilla alias name.
+  * Avoid whiptail syntax error and 'Box' device name when dev_items is empty.
+  * Support Btrfs subvolumes for openSUSE Tumbleweed in ocs-update-initrd.
+  * Allow partclone-static as alternative dependency.
+
+ -- Steven Shiau <steven@clonezilla.org>  Sat, 26 Sep 2026 18:35:01 +0800
+
 clonezilla (5.19.1-drbl1) unstable; urgency=medium
 
   * Rename the block device alias directory configuration ocs_dev_dir in
