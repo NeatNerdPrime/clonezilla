@@ -2253,10 +2253,20 @@ check_grub_partition() {
     # grub root-directory must have "/boot/"
     # For Fedora >= 18, the grub dir is named as "grub2", while for other distributions,
     # "grub" is still used.
+    # For btrfs with subvolumes (e.g. openSUSE, Ubuntu, Fedora), check subvolumes.
     if [ -d "$hd_img/boot/grub" -o \
 	 -d "$hd_img/grub/" -o \
 	 -d "$hd_img/boot/grub2" -o \
-	 -d "$hd_img/grub2/" ]; then
+	 -d "$hd_img/grub2/" -o \
+	 -n "$(ls -d "$hd_img"/@/.snapshots/*/snapshot/boot/grub2 2>/dev/null)" -o \
+	 -n "$(ls -d "$hd_img"/@/.snapshots/*/snapshot/boot/grub 2>/dev/null)" -o \
+	 -n "$(ls -d "$hd_img"/@/.snapshots/*/snapshot/boot 2>/dev/null)" -o \
+	 -d "$hd_img/@/boot/grub2" -o \
+	 -d "$hd_img/@/boot/grub" -o \
+	 -d "$hd_img/@/boot" -o \
+	 -d "$hd_img/root/boot/grub2" -o \
+	 -d "$hd_img/root/boot/grub" -o \
+	 -d "$hd_img/root/boot" ]; then
       # Found the partition...
       # Later we will remount it as /tmp/hd_img.XXXXXX/boot
       found_grub_partition="$found_grub_partition $grub_p"
@@ -2329,7 +2339,10 @@ mount_root_partition_for_separate_boot_part() {
     # root partition must have /boot, however, we have to skip the Clonezilla live boot media because it also includes /boot/.
     # Fedora >= 38 uses an extra dir "root" for root file system, i.e., /root/ under the root partition. 
     # Older system just puts the dirs (boot, usr, var, lib) in the / of root file system.
-    if [ -d "$hd_img/boot/" -o -d "$hd_img/root/boot/" ] && [ ! -e "$hd_img/Clonezilla-Live-Version" ]; then
+    # openSUSE / Ubuntu / Debian Btrfs uses @/.snapshots/*/snapshot/boot/ or @/boot/
+    if [ -d "$hd_img/boot/" -o -d "$hd_img/root/boot/" -o \
+         -n "$(ls -d "$hd_img"/@/.snapshots/*/snapshot/boot 2>/dev/null)" -o \
+         -d "$hd_img/@/boot/" ] && [ ! -e "$hd_img/Clonezilla-Live-Version" ]; then
        # Found the root partition
        found_root_partition="$root_partition"
        break;
@@ -2704,6 +2717,64 @@ SH_END
   return $rc_
 } # end of run_grub1_from_restored_os
 #
+get_restored_os_extra_root_path() {
+  # Function to find the subvolume root path under the mount point for btrfs or similar layouts
+  # Returns extra path like "/@/.snapshots/1/snapshot", "/@", "/root", or ""
+  local target_mnt="$1"
+  local def_subvol_out def_path isnap cand sub
+
+  # 1. Standard flat root: if /boot and (/etc/os-release or /etc/fstab) exist directly at root
+  if [ -d "$target_mnt/boot" ] && [ -f "$target_mnt/etc/os-release" -o -f "$target_mnt/etc/fstab" ]; then
+    echo ""
+    return 0
+  fi
+
+  # 2. btrfs subvolume get-default
+  if type btrfs &>/dev/null; then
+    def_subvol_out="$(btrfs subvolume get-default "$target_mnt" 2>/dev/null)"
+    if [ -n "$def_subvol_out" ] && [ -z "$(echo "$def_subvol_out" | grep "(FS_TREE)")" ]; then
+      def_path="$(echo "$def_subvol_out" | sed -r -e 's/.*path[[:space:]]+//')"
+      if [ -n "$def_path" ] && [ -d "$target_mnt/$def_path/boot" -o -f "$target_mnt/$def_path/etc/os-release" -o -f "$target_mnt/$def_path/etc/fstab" ]; then
+        echo "/$def_path"
+        return 0
+      fi
+    fi
+  fi
+
+  # 3. openSUSE Snapper layout: @/.snapshots/*/snapshot
+  if [ -d "$target_mnt/@/.snapshots" ]; then
+    for isnap in $(ls -vd "$target_mnt"/@/.snapshots/*/snapshot 2>/dev/null | tac); do
+      if [ -d "$isnap/boot" -o -f "$isnap/etc/os-release" -o -f "$isnap/etc/fstab" ]; then
+        echo "${isnap#$target_mnt}"
+        return 0
+      fi
+    done
+  fi
+
+  # 4. Ubuntu / Debian / openSUSE flat / Arch @ layout
+  if [ -d "$target_mnt/@/boot" -o -f "$target_mnt/@/etc/os-release" -o -f "$target_mnt/@/etc/fstab" ]; then
+    echo "/@"
+    return 0
+  fi
+
+  # 5. Fedora >= 38 root layout
+  if [ -d "$target_mnt/root/boot" -o -f "$target_mnt/root/etc/os-release" -o -f "$target_mnt/root/etc/fstab" ]; then
+    echo "/root"
+    return 0
+  fi
+
+  # 6. Fallback: check any snapshot or subvolume with boot
+  cand="$(find "$target_mnt" -maxdepth 4 -type d -name "boot" 2>/dev/null | head -n 1)"
+  if [ -n "$cand" ]; then
+    sub="${cand%/boot}"
+    echo "${sub#$target_mnt}"
+    return 0
+  fi
+
+  echo ""
+  return 0
+} # end of get_restored_os_extra_root_path
+#
 test_run_grub2_from_restored_os(){
   # The run_grub2_from_restored_os_mode we have to decide to run grub2 from the restored OS. Possible values are "yes" or "no". If "yes", Clonezilla will chroot and run grub-install. If "no", use the grub in the running system to run grub-install --root-directory=....
   # //NOTE// The OS arch in the running environment must be the same as that in the restored OS, otherwise, e.g. running OS is i386, and restored OS is x86-64, if this option is "yes", you will get error messages when run grub2 install: 
@@ -2713,6 +2784,7 @@ test_run_grub2_from_restored_os(){
   # run_grub2_from_restored_os_mode is global variable
   local root_prt="$1"   # e.g. /dev/sda2, the partition where / exists
   local rc_=0
+  local extra_root_path=""
   if [ -z "$root_prt" ]; then
     echo "Variable root_prt not assigned in function test_run_grub2_from_restored_os." | tee --append ${OCS_LOGFILE}
     echo "Program terminated." | tee --append ${OCS_LOGFILE}
@@ -2727,12 +2799,13 @@ test_run_grub2_from_restored_os(){
     echo "Failed to mount $root_prt! Maybe it does not exist or the file system is not supported in the kernel. Skip running grub2 reinstallation!" 
     return 1
   fi
-  echo "Test if we can chroot the restored OS partition $root_prt..."
+  extra_root_path="$(get_restored_os_extra_root_path "$mnt_pnt")"
+  echo "Test if we can chroot the restored OS partition $root_prt (subpath: $extra_root_path)..."
   # Actually we'd better to test /bin/bash instead of ls since we will run a shell script to for grub-install. However, if we test /bin/bash, we will enter the shell if it's successful.
-  LC_ALL=C chroot $mnt_pnt ls &>/dev/null
+  LC_ALL=C chroot $mnt_pnt/$extra_root_path ls &>/dev/null
   rc_=$?
   # Fedora >= 38 uses an extra dir "root" for root file system, i.e., /root/ under the root partition. 
-  if [ "$rc_" -ne 0 ]; then
+  if [ "$rc_" -ne 0 ] && [ -z "$extra_root_path" ]; then
     LC_ALL=C chroot $mnt_pnt/root/ ls &>/dev/null
     rc_=$?
   fi
@@ -2776,8 +2849,9 @@ run_grub2_from_restored_os() {
   fi
   # Fedora >= 38 uses an extra dir "root" for root file system, i.e., /root/ under the root partition. 
   # Older system just puts the dirs (boot, usr, var, lib) in the / of root file system.
-  extra_root_path=""
-  if [ -d "$mnt_pnt/root/boot" ]; then
+  # openSUSE / Ubuntu / Debian Btrfs uses @/.snapshots/*/snapshot or @
+  extra_root_path="$(get_restored_os_extra_root_path "$mnt_pnt")"
+  if [ -z "$extra_root_path" ] && [ -d "$mnt_pnt/root/boot" ]; then
     extra_root_path="/root"
   fi
   mkdir -p $mnt_pnt/$extra_root_path/dev
@@ -2875,14 +2949,16 @@ do_run_update_initrd_from_restored_os() {
     echo "Failed to mount $root_prt! Maybe it does not exist or the file system is not supported in the kernel. Skip running grub2 reinstallation!" 
     return 1
   else
-    echo "Test if we can chroot the restored OS partition $root_prt..."
+    extra_root_path="$(get_restored_os_extra_root_path "$mnt_pnt")"
+    echo "Test if we can chroot the restored OS partition $root_prt (subpath: $extra_root_path)..."
     # Actually we'd better to test /bin/bash instead of ls since we will run a shell script to for grub-install. However, if we test /bin/bash, we will enter the shell if it's successful.
-    LC_ALL=C chroot $mnt_pnt ls &>/dev/null
+    LC_ALL=C chroot $mnt_pnt/$extra_root_path ls &>/dev/null
     rc_=$?
     # Fedora >= 38 uses an extra dir "root" for root file system, i.e., /root/ under the root partition. 
-    if [ "$rc_" -ne 0 ]; then
+    if [ "$rc_" -ne 0 ] && [ -z "$extra_root_path" ]; then
       LC_ALL=C chroot $mnt_pnt/root/ ls &>/dev/null
       rc_=$?
+      [ "$rc_" -eq 0 ] && extra_root_path="/root"
     fi
     if [ "$rc_" -eq 0 ]; then
       [ "$BOOTUP" = "color" ] && $SETCOLOR_WARNING
@@ -2897,27 +2973,30 @@ do_run_update_initrd_from_restored_os() {
       return 199
     fi
   fi
-  # Fedora >= 38 uses an extra dir "root" for root file system, i.e., /root/ under the root partition. 
-  # Older system just puts the dirs (boot, usr, var, lib) in the / of root file system.
-  extra_root_path=""
-  if [ -d "$mnt_pnt/root/boot" ]; then
-    extra_root_path="/root"
+  # Extra root path detection for btrfs subvolumes (openSUSE snapper, openSUSE/Ubuntu @, Fedora root)
+  if [ -z "$extra_root_path" ]; then
+    extra_root_path="$(get_restored_os_extra_root_path "$mnt_pnt")"
+    if [ -z "$extra_root_path" ] && [ -d "$mnt_pnt/root/boot" ]; then
+      extra_root_path="/root"
+    fi
   fi
+  local target_root="${mnt_pnt%/}/${extra_root_path#/}"
+  target_root="${target_root%/}"
 
   # /var/tmp and /var/lib/initramfs-tools are required by update-initramfs.
   # This is especially when /var/ is in different partition with kernel.
-  mkdir -p $mnt_pnt/$extra_root_path/dev $mnt_pnt/$extra_root_path/var/tmp $mnt_pnt/$extra_root_path/var/lib/initramfs-tools
-  mount --bind /dev $mnt_pnt/$extra_root_path/dev
-  mount --bind /proc $mnt_pnt/$extra_root_path/proc
-  mount --bind /sys $mnt_pnt/$extra_root_path/sys
-  if [ -d "$mnt_pnt/$extra_root_path/run" ]; then
-    mount --bind /run $mnt_pnt/$extra_root_path/run
+  mkdir -p $target_root/dev $target_root/var/tmp $target_root/var/lib/initramfs-tools
+  mount --bind /dev $target_root/dev
+  mount --bind /proc $target_root/proc
+  mount --bind /sys $target_root/sys
+  if [ -d "$target_root/run" ]; then
+    mount --bind /run $target_root/run
   fi
 
   # If boot partition is not in the same partition as root partition, we have to mount grub partition in the root partition.
   diff_grub_pt_flag="no"
   if [ "$grub2_prt" != "$root_prt" ]; then
-     chroot $mnt_pnt/$extra_root_path/ mount $grub2_prt /boot/
+     chroot $target_root/ mount $grub2_prt /boot/
      diff_grub_pt_flag="yes"
   fi
 
@@ -2926,54 +3005,71 @@ do_run_update_initrd_from_restored_os() {
   # Initramfs file name examples:
   # Debian: initrd.img-4.18.0-0.bpo.3-amd64
   # CentOS: initramfs-3.10.0-957.12.2.el7.x86_64.img
-  kver_initrd="$(LC_ALL=C find $mnt_pnt/$extra_root_path/boot/ -name "vmlinuz*" -print 2>/dev/null | sort -r -V | head -n 1 | xargs basename | sed -r -e "s/^vmlinuz-//g")"
+  # openSUSE: initrd-6.11.0-default
+  kver_initrd="$(LC_ALL=C find $target_root/boot/ -name "vmlinuz*" -print 2>/dev/null | sort -r -V | head -n 1 | xargs basename | sed -r -e "s/^vmlinuz-//g")"
   # Get the file name for initramfs
-  initrd_2_be_updated="$(LC_ALL=C find $mnt_pnt/$extra_root_path/boot/ -name "init*${kver_initrd}*" -print 2>/dev/null | grep -v kdum)"
+  initrd_2_be_updated="$(LC_ALL=C find $target_root/boot/ -name "init*${kver_initrd}*" -print 2>/dev/null | grep -v kdum)"
   # Decide it's update-initramfs or dracut
-  mkinitrd_run_sh="$(mktemp $mnt_pnt/$extra_root_path/initrd-sh-XXXXXX)"
+  mkinitrd_run_sh="$(mktemp $target_root/initrd-sh-XXXXXX)"
   tmpdir_opt=""
-  # CentOS 6: /sbin/dracut, CentOS >=7: /usr/sbin/dracut
-  if [ -e "$mnt_pnt/$extra_root_path/usr/bin/dracut" ]; then
+  # CentOS 6: /sbin/dracut, CentOS >=7: /usr/sbin/dracut, openSUSE: /usr/bin/dracut
+  if [ -e "$target_root/usr/bin/dracut" ]; then
     # CentOS >=7: /usr/sbin/dracut
     # Newer dracut supports --tmpdir
     initrd_tool="dracut"
-    if [ -n "$(LC_ALL=C strings $mnt_pnt/$extra_root_path/usr/bin/dracut | \
+    if [ -n "$(LC_ALL=C strings $target_root/usr/bin/dracut | \
 	    grep -Eo -- --tmpdir)" ]; then
       tmpdir_opt="--tmpdir /tmp"
     fi
-  elif [ -e "$mnt_pnt/$extra_root_path/sbin/dracut" ]; then
+  elif [ -e "$target_root/usr/sbin/dracut" ]; then
+    initrd_tool="dracut"
+    if [ -n "$(LC_ALL=C strings $target_root/usr/sbin/dracut | \
+	    grep -Eo -- --tmpdir)" ]; then
+      tmpdir_opt="--tmpdir /tmp"
+    fi
+  elif [ -e "$target_root/sbin/dracut" ]; then
     # CentOS 6: /sbin/dracut
     initrd_tool="dracut"
-    if [ -n "$(LC_ALL=C strings $mnt_pnt/$extra_root_path/sbin/dracut | \
+    if [ -n "$(LC_ALL=C strings $target_root/sbin/dracut | \
 	    grep -Eo -- --tmpdir)" ]; then
       tmpdir_opt="--tmpdir /tmp"
     fi
-  elif [ -e "$mnt_pnt/$extra_root_path/usr/sbin/update-initramfs" ]; then
+  elif [ -e "$target_root/usr/sbin/update-initramfs" ]; then
     initrd_tool="update-initramfs"
-  elif [ -e "$mnt_pnt/$extra_root_path/usr/sbin/mkinitcpio" ]; then
+  elif [ -e "$target_root/usr/sbin/mkinitcpio" ]; then
     initrd_tool="mkinitcpio"
   fi
   case "$initrd_tool" in
     "update-initramfs")
       mkinitrd_cmd="update-initramfs -u -k all" ;;
     "dracut")
+      local target_initrd="${initrd_2_be_updated#$target_root}"
+      if [ -z "$target_initrd" ]; then
+        if [ -f "$target_root/boot/initrd-$kver_initrd" ]; then
+          target_initrd="/boot/initrd-$kver_initrd"
+        elif [ -f "$target_root/boot/initramfs-$kver_initrd.img" ]; then
+          target_initrd="/boot/initramfs-$kver_initrd.img"
+        else
+          target_initrd="/boot/initrd-$kver_initrd"
+        fi
+      fi
       # Here we assign tmpdir as /tmp, since by default it's /var/tmp, but in chroot the /var might be in another partition.
-      mkinitrd_cmd="dracut $tmpdir_opt -f ${initrd_2_be_updated#$mnt_pnt/$extra_root_path} $kver_initrd" ;;
+      mkinitrd_cmd="dracut $tmpdir_opt -f $target_initrd $kver_initrd" ;;
     "mkinitcpio")
       mkinitrd_cmd=" mkinitcpio -P" ;;
     *)
       [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
       echo "The tool to update initramfs was NOT found in function do_run_update_initrd_from_restored_os!"
       [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
-      unmount_wait_and_try $mnt_pnt/$extra_root_path/boot
-      if [ -d "$mnt_pnt/$extra_root_path/sys/firmware/efi/efivars" ]; then
-        unmount_wait_and_try $mnt_pnt/$extra_root_path/sys/firmware/efi/efivars
+      unmount_wait_and_try $target_root/boot
+      if [ -d "$target_root/sys/firmware/efi/efivars" ]; then
+        unmount_wait_and_try $target_root/sys/firmware/efi/efivars
       fi
-      unmount_wait_and_try $mnt_pnt/$extra_root_path/sys
-      unmount_wait_and_try $mnt_pnt/$extra_root_path/proc
-      unmount_wait_and_try $mnt_pnt/$extra_root_path/dev
-      if [ -d "$mnt_pnt/$extra_root_path/run" ]; then
-        unmount_wait_and_try $mnt_pnt/$extra_root_path/run
+      unmount_wait_and_try $target_root/sys
+      unmount_wait_and_try $target_root/proc
+      unmount_wait_and_try $target_root/dev
+      if [ -d "$target_root/run" ]; then
+        unmount_wait_and_try $target_root/run
       fi
       unmount_wait_and_try $mnt_pnt
       return 1
@@ -2990,25 +3086,25 @@ SH_END
   echo "Running the command in the restored GNU/Linux chroot env:"
   echo "$mkinitrd_cmd"
   echo "This might take a few minutes..."
-  LC_ALL=C chroot $mnt_pnt/$extra_root_path/ /"$(basename $mkinitrd_run_sh)"
+  LC_ALL=C chroot $target_root/ /"$(basename $mkinitrd_run_sh)"
   rc_=$?
   [ -e "$mkinitrd_run_sh" ] && rm -f $mkinitrd_run_sh
 
   #
   if [ "$diff_grub_pt_flag" = "yes" ]; then
-    chroot $mnt_pnt/$extra_root_path/ umount /boot/
+    chroot $target_root/ umount /boot/
   fi
-  if [ -d "$mnt_pnt/$extra_root_path/sys/firmware/efi/efivars" ]; then
-    unmount_wait_and_try $mnt_pnt/$extra_root_path/sys/firmware/efi/efivars
+  if [ -d "$target_root/sys/firmware/efi/efivars" ]; then
+    unmount_wait_and_try $target_root/sys/firmware/efi/efivars
   fi
-  unmount_wait_and_try $mnt_pnt/$extra_root_path/sys
-  unmount_wait_and_try $mnt_pnt/$extra_root_path/proc
-  unmount_wait_and_try $mnt_pnt/$extra_root_path/dev
-  if [ -d "$mnt_pnt/$extra_root_path/run" ]; then
-    unmount_wait_and_try $mnt_pnt/$extra_root_path/run
+  unmount_wait_and_try $target_root/sys
+  unmount_wait_and_try $target_root/proc
+  unmount_wait_and_try $target_root/dev
+  if [ -d "$target_root/run" ]; then
+    unmount_wait_and_try $target_root/run
   fi
   unmount_wait_and_try $mnt_pnt
-  [ -d "$mnt_pnt/$extra_root_path/dev" ] && rmdir $mnt_pnt/$extra_root_path/dev
+  [ -d "$target_root/dev" ] && rmdir $target_root/dev
   [ -d "$mnt_pnt" -a -n "$mnt_pnt" ] && rmdir $mnt_pnt
 
   return $rc_
