@@ -4999,6 +4999,15 @@ get_input_dev_name() {
     done
     HARDDEVS="$(echo -n "$dev_items" | sed '/^$/d' | LC_ALL=C sort -V | tr '\n' ' ')"
     echo " done!"
+    NUMDEV="$(echo -n "$dev_items" | sed '/^$/d' | wc -l)"
+    if [ "$NUMDEV" -le 0 -o -z "$(echo "$HARDDEVS" | xargs)" ]; then
+      [ "$BOOTUP" = "color" ] && $SETCOLOR_FAILURE
+      echo "$msg_error! $msg_not_mounted_dev_found"
+      echo -n "$msg_press_enter_to_exit"
+      read
+      [ "$BOOTUP" = "color" ] && $SETCOLOR_NORMAL
+      exit 1
+    fi
     :> $TMP # Clean the TMP file
     # If large number of devices, we must allow it to be scrolled down.
     if [ "$NUMDEV" -lt "$MAX_DIALOG_HEIGHT" ]; then
@@ -5011,6 +5020,10 @@ get_input_dev_name() {
       $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla | $msg_mode: $ocs_mode_prompt" \
         --$selection "$msg_choose_dev_to_what" 0 0 $height $HARDDEVS \
       2> $TMP
+      dia_rc=$?
+      if [ "$dia_rc" -ne 0 ]; then
+        :> $TMP
+      fi
       target_dev="$(cat $TMP)"
       if [ -z "$target_dev" ]; then
         $DIA --backtitle "$msg_nchc_free_software_labs" --title "$msg_nchc_clonezilla | $msg_mode: $ocs_mode_prompt" \

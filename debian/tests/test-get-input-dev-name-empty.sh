@@ -84,6 +84,31 @@ else
   echo "PASS: get_input_dev_name exited with error as expected."
 fi
 
+# TEST 3: When devices pass initial count but are filtered out during dev_items construction
+# This simulates the case where HARDDEVS would be empty and previously crash whiptail with "Box" error
+get_not_busy_disks_or_parts() {
+  dev_list="sda1"
+}
+ocs-get-dev-info() {
+  echo "part ext4"
+}
+ocs-blk-dev-info() {
+  echo "[]" > "$1"
+}
+get_disk_or_part_hardware_info() {
+  # Return 8 to simulate filtering/skipping
+  return 8
+}
+export -f ocs-get-dev-info ocs-blk-dev-info get_disk_or_part_hardware_info
+
+echo "Testing get_input_dev_name when all devices are filtered out during dialog item preparation..."
+if ( get_input_dev_name "$ANS_TMP" partition menu yes "prompt" < /dev/null ) 2>/dev/null; then
+  echo "FAIL: Expected get_input_dev_name to exit with error because all devices were filtered, but it succeeded!"
+  exit 1
+else
+  echo "PASS: get_input_dev_name cleanly handled empty dev_items without crashing whiptail."
+fi
+
 # Clean up
 export PATH="$ORIGINAL_PATH"
 rm -rf /tmp/mock-bin
